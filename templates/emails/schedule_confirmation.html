@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Interview Scheduled</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 640px;
+            margin: 30px auto;
+            background: #ffffff;
+            padding: 32px;
+            border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        .header {
+            border-bottom: 1px solid #e6e6e6;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+        }
+        .header h2 {
+            margin: 0;
+            color: #1f2937;
+        }
+        .content p {
+            color: #374151;
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        .footer {
+            margin-top: 32px;
+            font-size: 13px;
+            color: #6b7280;
+            border-top: 1px solid #e6e6e6;
+            padding-top: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <div class="header">
+            <h2>Interview Scheduled</h2>
+        </div>
+
+        <div class="content">
+            <p>Dear {{ candidate_name }},</p>
+
+            <p>
+                Your AI interview for the <strong>{{ role }}</strong> position at
+                <strong>Infospoke Integrated Solutions LLP</strong> has been successfully scheduled.
+            </p>
+            
+            <p>
+                <strong>Scheduled Time:</strong> {{ scheduled_time }}
+            </p>
+
+            <p>
+                You will receive another email containing the interview link 15 minutes prior to your scheduled time. Please be prepared to join promptly!
+            </p>
+
+            <p>
+                We look forward to speaking with you.
+            </p>
+
+            <p>
+                Sincerely,<br>
+                <strong>Infospoke Integrated Solutions LLP Recruitment Team</strong>
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>
+                This is an automated message. Please do not reply to this email.
+            </p>
+        </div>
+
+    </div>
+</body>
+</html>

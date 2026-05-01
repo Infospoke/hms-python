@@ -1,0 +1,44 @@
+{
+    "project_name": "ats",
+    "environment": "TEST_SERVER",
+    "common": {
+        "gemini_model": "gemma-3-27b-it",
+        "gemini_model_for_ai_interviewer": "gemma-3-27b-it",
+        "groq_model_for_ai_interviewer": "llama-3.3-70b-versatile",
+        "supported_formats": [".pdf", ".docx", ".doc"],
+        "scoring": {
+            "max_score": 100,
+            "min_score": 0,
+            "passing_score": 60,
+            "weights": {
+                "skills_match": 0.5,
+                "experience_relevance": 0.2,
+                "education": 0.1,
+                "keywords_match": 0.15,
+                "overall_fit": 0.05
+            },
+            "thresholds": {
+                "critical_skills": 30,
+                "minimum_skills_percentage": 40,
+                "skills_veto": 30,
+                "experience_compensation_limit": 25
+            }
+        },
+        "resume_batch_size": 3,
+        "GOOGLE_API_KEY": "YOUR_GOOGLE_API_KEY",
+        "GROQ_API_KEY": "YOUR_GROQ_API_KEY",
+        "WHISPER_MODEL_NAME": "whisper-large-v3"
+    },
+    "environments": {
+        "TEST_SERVER": {
+            "DATABASE_URL": "postgresql://user:password@localhost:5432/dbname",
+            "SPRING_BOOT_HOST": "https://api.example.com",
+            "AWS_REGION": "your-region",
+            "AWS_ACCESS_KEY": "YOUR_AWS_ACCESS_KEY",
+            "AWS_SECRET_KEY": "YOUR_AWS_SECRET_KEY",
+            "INFOSPOKE_S3_BUCKET_NAME": "your-bucket-name",
+            "SQS_ANALYZE_IMAGE_QUEUE_URL": "https://sqs.your-region.amazonaws.com/your-account/your-queue",
+            "HOST": "http://localhost:8000"
+        }
+    }
+}
