@@ -21,7 +21,7 @@ class InterviewSessionStatusEnum(str, Enum):
 class ProctoringEventType(str, Enum):
     visual_violation = "Visual Violation"
     browser_tab_switch = "BROWSER_TAB_SWITCH"
-    right_click_blocked = "RIGHT_CLICK_BLOCKED"
+    right_click_blocked = "RIGHT_CLICK_BLOCKED"  
     fullscreen_exit = "FULLSCREEN_EXIT"
     fullscreen_auto_reenter = "FULLSCREEN_AUTO_REENTER"
     esc_key_attempt = "ESC_KEY_ATTEMPT"
@@ -208,6 +208,7 @@ class InterviewAnalysis(SQLModel, table=(True)):
     total_score: float = Field(default=0.0)
     recommendation: str = Field(max_length=20, nullable=True)
     analysis_completed: bool = Field(default=False)
+    interview_analysis_date: Optional[datetime] = Field(default=None)
     final_decision: Optional[str] = Field(default="", max_length=20, nullable=True)
     email_sent: bool = Field(default=False)
     is_deleted: bool = Field(default=False)

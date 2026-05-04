@@ -360,6 +360,7 @@ class AnalysisWorker(threading.Thread):
                 interview_analysis.recommendation = "REJECT"
 
             interview_analysis.analysis_completed = True
+            interview_analysis.interview_analysis_date = timezone_utils.get_ist_now()
 
             candidate_name = db_operations.get_candidate_name(
                 session, interview_analysis.application_id

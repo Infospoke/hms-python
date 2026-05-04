@@ -93,26 +93,13 @@ def create_interview_session(
             session.execute(text(f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN status VARCHAR(20) DEFAULT 'Scheduled'"))
             session.commit()
         
-        # Normalize existing statuses to Title Case
-        session.execute(text(f"UPDATE {models.InterviewSessions.__tablename__} SET status = 'Scheduled' WHERE status = 'scheduled'"))
-        session.execute(text(f"UPDATE {models.InterviewSessions.__tablename__} SET status = 'Upcoming' WHERE status = 'upcoming'"))
-        session.execute(text(f"UPDATE {models.InterviewSessions.__tablename__} SET status = 'Completed' WHERE status = 'completed'"))
-        session.execute(text(f"UPDATE {models.InterviewSessions.__tablename__} SET status = 'Did Not Attend' WHERE status = 'did_not_attend'"))
         
-        # Also normalize InterviewAnalysis
-        session.execute(text(f"UPDATE {models.InterviewAnalysis.__tablename__} SET status = 'Not Started' WHERE status = 'not_started'"))
-        session.execute(text(f"UPDATE {models.InterviewAnalysis.__tablename__} SET status = 'In Progress' WHERE status = 'in_progress'"))
-        session.execute(text(f"UPDATE {models.InterviewAnalysis.__tablename__} SET status = 'Completed' WHERE status = 'completed'"))
+        if "interview_analysis_date" not in [c["name"] for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)]:
+            logger.info(f"Patching {models.InterviewAnalysis.__tablename__} table: adding interview_analysis_date column")
+            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN interview_analysis_date TIMESTAMP DEFAULT NULL"))
+            session.commit()
+            
         session.commit()
-
-        if "final_decision" not in [c["name"] for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)]:
-            logger.info(f"Patching {models.InterviewAnalysis.__tablename__} table: adding final_decision column")
-            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN final_decision VARCHAR(20) DEFAULT ''"))
-            session.commit()
-        else:
-            # Ensure it is nullable if it already exists
-            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ALTER COLUMN final_decision DROP NOT NULL"))
-            session.commit()
 
         job_application = session.exec(
             select(models.JobApplications).where(
@@ -764,11 +751,6 @@ def start_interview_generation(interview_session_id: str, session: Session):
         start_window = base_time - timedelta(minutes=30)
         expire_time = base_time + timedelta(minutes=expire_minutes)
 
-        print("Scheduled (IST):", base_time)
-        print("Start Window (IST):", start_window)
-        print("Expire (IST):", expire_time)
-        print("Now (IST):", now)
-
         if now < start_window:
             return {
                 "error": "Interview not yet available. You can join 30 minutes before the scheduled time.",
@@ -792,10 +774,6 @@ def start_interview_generation(interview_session_id: str, session: Session):
             created_time = created_time.astimezone(IST)
 
         expire_time = created_time + timedelta(minutes=expire_minutes)
-
-        print("Created (IST):", created_time)
-        print("Now (IST):", now)
-        print("Expire (IST):", expire_time)
 
         if now > expire_time:
             return {
@@ -1019,6 +997,7 @@ async def submit_answers(
 
                     if bg_analysis:
                         bg_analysis.status = models.StatusEnum.completed
+                        bg_analysis.interview_analysis_date = timezone_utils.get_ist_now()
                         db_session.add(bg_analysis)
                         
                         session_obj = db_session.exec(
