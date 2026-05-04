@@ -615,21 +615,24 @@ class ResumeAnalyzer:
 
                 if self.background_tasks:
                     try:
-                        job_title, candidate_name, candidate_email = get_candidate_details(
-                            application_id, self.session
-                        )
                         is_selected = result.get("final_score", 0) >= 50
-                        send_resume_result_email(
-                            candidate_name=candidate_name,
-                            candidate_email=candidate_email,
-                            job_title=job_title,
-                            score=result.get("final_score", 0),
-                            is_selected=is_selected,
-                            background_tasks=self.background_tasks,
-                        )
-                        logger.info(f"Email sent to {candidate_email} for application {application_id}")
+                        if not is_selected:
+                            job_title, candidate_name, candidate_email = get_candidate_details(
+                                application_id, self.session
+                            )
+                            send_resume_result_email(
+                                candidate_name=candidate_name,
+                                candidate_email=candidate_email,
+                                job_title=job_title,
+                                score=result.get("final_score", 0),
+                                is_selected=is_selected,
+                                background_tasks=self.background_tasks,
+                            )
+                            logger.info(f"Rejection email sent to {candidate_email} for application {application_id}")
+                        else:
+                            logger.info(f"Application {application_id} selected (score: {result.get('final_score', 0)}). Skipping notification email as per requirement.")
                     except Exception as e:
-                        logger.error(f"Failed to send email for application {application_id}: {str(e)}")
+                        logger.error(f"Failed to handle email notification for application {application_id}: {str(e)}")
 
             else:
                 logger.warning(messages.FAILED_TO_SAVE_ANALYSIS(filename))

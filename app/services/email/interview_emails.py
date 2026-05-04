@@ -128,7 +128,7 @@ def send_interview_link_email_sync(
                 attachments=[temp_file_path],
             )
         )
-        logger.info(f"Interview 15-min reminder with SEB sent to {candidate_email}")
+        logger.info(f"Interview 30-min reminder with SEB sent to {candidate_email}")
 
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
@@ -191,17 +191,13 @@ def send_resume_result_email(
     is_selected: bool,
     background_tasks: BackgroundTasks,
 ):
-    template = (
-        "emails/resume_selected.html"
-        if is_selected
-        else "emails/resume_rejected.html"
-    )
+    # Only send rejection emails. Resume selected emails are no longer sent.
+    if is_selected:
+        logger.info(f"Skipping resume selection email for {candidate_email}")
+        return
 
-    subject = (
-        f"Application Update - Selected for {job_title}"
-        if is_selected
-        else f"Application Update for {job_title}"
-    )
+    template = "emails/resume_rejected.html"
+    subject = f"Application Update for {job_title}"
 
     try:
         background_tasks.add_task(

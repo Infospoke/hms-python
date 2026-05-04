@@ -88,6 +88,32 @@ def create_interview_session(
             )
             session.commit()
 
+        if "status" not in columns:
+            logger.info(f"Patching {models.InterviewSessions.__tablename__} table: adding status column")
+            session.execute(text(f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN status VARCHAR(20) DEFAULT 'Scheduled'"))
+            session.commit()
+        
+        # Normalize existing statuses to Title Case
+        session.execute(text(f"UPDATE {models.InterviewSessions.__tablename__} SET status = 'Scheduled' WHERE status = 'scheduled'"))
+        session.execute(text(f"UPDATE {models.InterviewSessions.__tablename__} SET status = 'Upcoming' WHERE status = 'upcoming'"))
+        session.execute(text(f"UPDATE {models.InterviewSessions.__tablename__} SET status = 'Completed' WHERE status = 'completed'"))
+        session.execute(text(f"UPDATE {models.InterviewSessions.__tablename__} SET status = 'Did Not Attend' WHERE status = 'did_not_attend'"))
+        
+        # Also normalize InterviewAnalysis
+        session.execute(text(f"UPDATE {models.InterviewAnalysis.__tablename__} SET status = 'Not Started' WHERE status = 'not_started'"))
+        session.execute(text(f"UPDATE {models.InterviewAnalysis.__tablename__} SET status = 'In Progress' WHERE status = 'in_progress'"))
+        session.execute(text(f"UPDATE {models.InterviewAnalysis.__tablename__} SET status = 'Completed' WHERE status = 'completed'"))
+        session.commit()
+
+        if "final_decision" not in [c["name"] for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)]:
+            logger.info(f"Patching {models.InterviewAnalysis.__tablename__} table: adding final_decision column")
+            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN final_decision VARCHAR(20) DEFAULT ''"))
+            session.commit()
+        else:
+            # Ensure it is nullable if it already exists
+            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ALTER COLUMN final_decision DROP NOT NULL"))
+            session.commit()
+
         job_application = session.exec(
             select(models.JobApplications).where(
                 models.JobApplications.id == data.application_id
@@ -101,6 +127,7 @@ def create_interview_session(
             application_id=data.application_id,
             question_type=data.question_type,
             exam_exit_password="",
+            status=models.InterviewSessionStatusEnum.scheduled,
         )
 
         interview_analysis = models.InterviewAnalysis(
@@ -220,6 +247,7 @@ def schedule_interview(
         interview_session.scheduled_time = slot_dt
         interview_session.is_scheduled = True
         interview_session.schedule_email_sent = False  # Ensure worker picks it up
+        interview_session.status = models.InterviewSessionStatusEnum.scheduled
 
         session.add(interview_session)
         session.commit()
@@ -231,7 +259,7 @@ def schedule_interview(
 
         return {
             "success": True,
-            "message": f"Interview successfully scheduled for {data.scheduled_date} at {data.scheduled_time} IST. Link will be sent 15 minutes before the interview.",
+            "message": f"Interview successfully scheduled for {data.scheduled_date} at {data.scheduled_time} IST. Link will be sent 30 minutes before the interview.",
         }
     except ValueError:
         raise HTTPException(
@@ -285,6 +313,14 @@ def admin_schedule_interview(
             )
             session.commit()
 
+        analysis_columns = [c["name"] for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)]
+        if "final_decision" not in analysis_columns:
+            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN final_decision VARCHAR(20) DEFAULT ''"))
+            session.commit()
+        else:
+            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ALTER COLUMN final_decision DROP NOT NULL"))
+            session.commit()
+
         # --- Look up (or auto-create) the interview session ---
         interview_session = session.exec(
             select(models.InterviewSessions).where(
@@ -318,6 +354,7 @@ def admin_schedule_interview(
                 application_id=data.application_id,
                 question_type=data.question_type,
                 exam_exit_password="",
+                status=models.InterviewSessionStatusEnum.scheduled,
             )
 
             session.add(interview_session)
@@ -354,9 +391,8 @@ def admin_schedule_interview(
 
         interview_session.scheduled_time = slot_dt
         interview_session.is_scheduled = True
-        interview_session.schedule_email_sent = (
-            False  # Worker picks this up for reminder
-        )
+        interview_session.schedule_email_sent = False
+        interview_session.status = models.InterviewSessionStatusEnum.scheduled
 
         session.add(interview_session)
         session.commit()
@@ -372,7 +408,7 @@ def admin_schedule_interview(
             "message": (
                 f"Interview successfully scheduled for {data.scheduled_date} at "
                 f"{data.scheduled_time} IST. A confirmation email has been sent to the candidate. "
-                f"The interview link will be sent 15 minutes before the interview."
+                f"The interview link will be sent 30 minutes before the interview."
             ),
             "interview_session_id": interview_session.interview_session_id,
         }
@@ -461,6 +497,32 @@ def update_final_candidate_decision(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred while updating final decision.",
         )
+
+
+@router.post("/mark-did-not-attend")
+def mark_did_not_attend(
+    data: Dict[str, Any],
+    session: Session = Depends(deps.get_session),
+):
+    application_id = data.get("application_id")
+    if not application_id:
+        raise HTTPException(status_code=400, detail="application_id is required")
+
+    interview_session = session.exec(
+        select(models.InterviewSessions).where(
+            models.InterviewSessions.application_id == application_id,
+            models.InterviewSessions.is_deleted == False,
+        )
+    ).first()
+
+    if not interview_session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+
+    interview_session.status = models.InterviewSessionStatusEnum.did_not_attend
+    session.add(interview_session)
+    session.commit()
+
+    return {"success": True, "message": "Status updated to Did Not Attend"}
 
 
 @router.post("/fetch-interview-analysis")
@@ -699,7 +761,7 @@ def start_interview_generation(interview_session_id: str, session: Session):
             base_time = base_time.astimezone(IST)
 
         expire_minutes = float(config.configuration_value) if config else 30
-        start_window = base_time - timedelta(minutes=15)
+        start_window = base_time - timedelta(minutes=30)
         expire_time = base_time + timedelta(minutes=expire_minutes)
 
         print("Scheduled (IST):", base_time)
@@ -709,7 +771,7 @@ def start_interview_generation(interview_session_id: str, session: Session):
 
         if now < start_window:
             return {
-                "error": "Interview not yet available. You can join 15 minutes before the scheduled time.",
+                "error": "Interview not yet available. You can join 30 minutes before the scheduled time.",
                 "questions": [],
                 "available_at": start_window,
             }
@@ -770,11 +832,19 @@ def start_interview_generation(interview_session_id: str, session: Session):
         interview_analysis.application_id = interview_session.application_id
         interview_analysis.status = models.StatusEnum.in_progress
     else:
+        job_app = session.exec(
+            select(models.JobApplications).where(
+                models.JobApplications.id == interview_session.application_id
+            )
+        ).first()
         interview_analysis = models.InterviewAnalysis(
             application_id=interview_session.application_id,
             interview_session_id=interview_session.interview_session_id,
             status=models.StatusEnum.in_progress,
+            job_id=job_app.job_id if job_app else None,
         )
+
+    session.add(interview_session)
 
     job_details = session.exec(
         select(models.JobDetails)
@@ -950,6 +1020,16 @@ async def submit_answers(
                     if bg_analysis:
                         bg_analysis.status = models.StatusEnum.completed
                         db_session.add(bg_analysis)
+                        
+                        session_obj = db_session.exec(
+                            select(models.InterviewSessions).where(
+                                models.InterviewSessions.interview_session_id == interview_session_id
+                            )
+                        ).first()
+                        if session_obj:
+                            session_obj.status = models.InterviewSessionStatusEnum.completed
+                            db_session.add(session_obj)
+                            
                         db_session.commit()
                 return res
 
