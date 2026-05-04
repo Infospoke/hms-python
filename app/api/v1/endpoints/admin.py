@@ -379,15 +379,13 @@ def generate_pdf_report(
 
         pdf_buffer = generate_comprehensive_report(report_data)
 
-        filename = f"candidate_report_{application_id}.pdf"
-        if job_app and job_app.first_name:
-            clean_name = f"{job_app.first_name}_{job_app.last_name or ''}".strip()
-            clean_name = "".join(
-                c for c in clean_name if c.isalnum() or c in " ._-"
-            ).strip()
-            if clean_name:
-                filename = f"report_{clean_name}_{application_id}.pdf"
-                filename = filename.replace(" ", "_")
+        candidate_name = f"{job_app.first_name or ''} {job_app.last_name or ''}".strip() or "Candidate"
+        job_title = job_meta.job_title if job_meta and job_meta.job_title else "Job"
+
+        clean_candidate = "".join(c for c in candidate_name if c.isalnum() or c == " ").strip().replace(" ", "_")
+        clean_job = "".join(c for c in job_title if c.isalnum() or c == " ").strip().replace(" ", "_")
+
+        filename = f"{clean_candidate}_{clean_job}_Report.pdf"
 
         return StreamingResponse(
             pdf_buffer,
@@ -585,8 +583,8 @@ async def generate_applicants_report(job_id: int, session: Session = Depends(get
             raw_interview_records=job_interview_analysis
         )
 
-        safe_job_title = (job_title or "Job").replace(' ', '_')
-        filename = f"applicants_report_{safe_job_title}.pdf"
+        clean_job_title = (job_title or "Job").replace(' ', '_')
+        filename = f"{clean_job_title}_ApplicantsReport.pdf"
 
         return StreamingResponse(
             pdf_buffer,

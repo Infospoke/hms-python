@@ -827,7 +827,8 @@ def download_applicants_report(
         raw_analysis_records=analysis_records,
         raw_interview_records=interview_records
     )
-    filename = f"applicants_report_{job_id}.pdf"
+    safe_job_title = job_info["title"].replace(" ", "_")
+    filename = f"{safe_job_title}_ApplicantsReport.pdf"
     media_type = "application/pdf"
 
     return StreamingResponse(
