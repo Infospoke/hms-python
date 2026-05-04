@@ -11,6 +11,12 @@ class StatusEnum(str, Enum):
     in_progress = "in_progress"
     completed = "completed"
 
+class InterviewSessionStatusEnum(str, Enum):
+    completed = "Completed"
+    scheduled = "Scheduled"
+    upcoming = "Upcoming"
+    did_not_attend = "Did Not Attend"
+
 
 class ProctoringEventType(str, Enum):
     visual_violation = "Visual Violation"
@@ -185,6 +191,7 @@ class InterviewSessions(SQLModel, table=(True)):
     scheduled_time: Optional[datetime] = Field(default=None)
     is_scheduled: bool = Field(default=False)
     schedule_email_sent: bool = Field(default=False)
+    status: InterviewSessionStatusEnum = Field(default=InterviewSessionStatusEnum.scheduled, max_length=20)
     is_deleted: bool = Field(default=False)
     exam_exit_password: str = Field(max_length=255)
 
@@ -201,7 +208,7 @@ class InterviewAnalysis(SQLModel, table=(True)):
     total_score: float = Field(default=0.0)
     recommendation: str = Field(max_length=20, nullable=True)
     analysis_completed: bool = Field(default=False)
-    final_decision: str = Field(default=None, max_length=20)
+    final_decision: Optional[str] = Field(default="", max_length=20, nullable=True)
     email_sent: bool = Field(default=False)
     is_deleted: bool = Field(default=False)
     job_id: int = Field(foreign_key="tb_job_details.job_id")
