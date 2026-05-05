@@ -17,7 +17,7 @@ class InterviewSessionStatusEnum(str, Enum):
     completed = "completed"
     scheduled = "scheduled"
     upcoming = "upcoming"
-    did_not_attend = "did_not_attend"
+    did_not_attend = "did not attend"
 
 
 class ProctoringEventType(str, Enum):

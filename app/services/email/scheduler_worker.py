@@ -73,7 +73,8 @@ def process_scheduled_interviews():
                         # Mark as Did Not Attend ONLY if no questions are generated 
                         if not questions_exist and not (analysis and analysis.status in [models.StatusEnum.in_progress, models.StatusEnum.completed]):
                             logger.info(f"Marking {interview.interview_session_id} as Did Not Attend")
-                            interview.status = models.InterviewSessionStatusEnum.did_not_attend
+                            logger.info(f"Marking {interview.interview_session_id} as Did Not Attend. Using literal string: 'did not attend'")
+                            interview.status = "did not attend"
                             session.add(interview)
 
                 session.commit()

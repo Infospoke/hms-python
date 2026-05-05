@@ -505,7 +505,8 @@ def mark_did_not_attend(
     if not interview_session:
         raise HTTPException(status_code=404, detail="Interview session not found")
 
-    interview_session.status = models.InterviewSessionStatusEnum.did_not_attend
+    logger.info(f"Marking as did_not_attend. Using literal string: 'did not attend'")
+    interview_session.status = "did not attend"
     session.add(interview_session)
     session.commit()
 
