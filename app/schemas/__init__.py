@@ -4,6 +4,7 @@ from app.core import config as consts
 from app.models import ResumeAnalysis
 from enum import Enum
 
+
 class ResumeBatch(BaseModel):
     batch_id: int
     resume_batch: List[int]
@@ -115,6 +116,7 @@ class DeleteCandidateRequest(BaseModel):
 class TestSendInterviewEmailRequest(BaseModel):
     interview_session_id: str
 
+
 class SkillRequirement(BaseModel):
     skill_title: str
 
@@ -130,6 +132,7 @@ class AISuggestSkillsResponse(BaseModel):
     skills: List[SkillRequirement]
     message: Optional[str] = None
 
+
 class SeniorityLevel(str, Enum):
     IC1 = "IC1"
     IC2 = "IC2"
@@ -143,8 +146,6 @@ class SeniorityLevel(str, Enum):
     M3 = "M3"
     M4 = "M4"
     M5 = "M5"
- 
- 
 
 
 SENIORITY_TO_YEO = {
@@ -161,7 +162,7 @@ SENIORITY_TO_YEO = {
     SeniorityLevel.M4: "15-20",
     SeniorityLevel.M5: "20+",
 }
- 
+
 
 class GenerateJobDescriptionRequest(BaseModel):
     job_title: str
@@ -237,6 +238,7 @@ class JobRequirementsRequest(BaseModel):
     business_justification: str
     location: str
 
+
 class ApplicantInfo(BaseModel):
     name: str
     experience: str
@@ -276,3 +278,8 @@ class QualificationSuggestion(BaseModel):
 
 class QualificationsResponse(BaseModel):
     qualifications: List[QualificationSuggestion]
+
+
+class CandidateRejectedRequest(BaseModel):
+    application_id: int
+    rejected: bool

@@ -13,7 +13,7 @@ from sqlmodel import Session, select, delete
 from sqlalchemy import asc, desc, case
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from fastapi.responses import StreamingResponse
-from app.services.pdf_generator import generate_applicants_pdf
+from app.services.reports.job_applicants_report import generate_applicants_pdf
 from app.models import JobApplications, ResumeAnalysis, InterviewAnalysis
 from app import models
 from app.api import deps
