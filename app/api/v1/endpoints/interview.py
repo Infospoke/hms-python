@@ -89,16 +89,30 @@ def create_interview_session(
             session.commit()
 
         if "status" not in columns:
-            logger.info(f"Patching {models.InterviewSessions.__tablename__} table: adding status column")
-            session.execute(text(f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN status VARCHAR(20) DEFAULT 'Scheduled'"))
+            logger.info(
+                f"Patching {models.InterviewSessions.__tablename__} table: adding status column"
+            )
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN status VARCHAR(20) DEFAULT 'Scheduled'"
+                )
+            )
             session.commit()
-        
-        
-        if "interview_analysis_date" not in [c["name"] for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)]:
-            logger.info(f"Patching {models.InterviewAnalysis.__tablename__} table: adding interview_analysis_date column")
-            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN interview_analysis_date TIMESTAMP DEFAULT NULL"))
+
+        if "interview_analysis_date" not in [
+            c["name"]
+            for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)
+        ]:
+            logger.info(
+                f"Patching {models.InterviewAnalysis.__tablename__} table: adding interview_analysis_date column"
+            )
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN interview_analysis_date TIMESTAMP DEFAULT NULL"
+                )
+            )
             session.commit()
-            
+
         session.commit()
 
         job_application = session.exec(
@@ -300,12 +314,23 @@ def admin_schedule_interview(
             )
             session.commit()
 
-        analysis_columns = [c["name"] for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)]
+        analysis_columns = [
+            c["name"]
+            for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)
+        ]
         if "final_decision" not in analysis_columns:
-            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN final_decision VARCHAR(20) DEFAULT ''"))
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN final_decision VARCHAR(20) DEFAULT ''"
+                )
+            )
             session.commit()
         else:
-            session.execute(text(f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ALTER COLUMN final_decision DROP NOT NULL"))
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ALTER COLUMN final_decision DROP NOT NULL"
+                )
+            )
             session.commit()
 
         # --- Look up (or auto-create) the interview session ---
@@ -438,9 +463,7 @@ def update_final_candidate_decision(
         ).first()
 
         job = session.exec(
-            select(models.Jobs).where(
-                models.Jobs.job_id == job_application.job_id
-            )
+            select(models.Jobs).where(models.Jobs.job_id == job_application.job_id)
         ).first()
 
         comment = data.comment or ""
@@ -484,33 +507,6 @@ def update_final_candidate_decision(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error occurred while updating final decision.",
         )
-
-
-@router.post("/mark-did-not-attend")
-def mark_did_not_attend(
-    data: Dict[str, Any],
-    session: Session = Depends(deps.get_session),
-):
-    application_id = data.get("application_id")
-    if not application_id:
-        raise HTTPException(status_code=400, detail="application_id is required")
-
-    interview_session = session.exec(
-        select(models.InterviewSessions).where(
-            models.InterviewSessions.application_id == application_id,
-            models.InterviewSessions.is_deleted == False,
-        )
-    ).first()
-
-    if not interview_session:
-        raise HTTPException(status_code=404, detail="Interview session not found")
-
-    logger.info(f"Marking as did_not_attend. Using literal string: 'did not attend'")
-    interview_session.status = "did not attend"
-    session.add(interview_session)
-    session.commit()
-
-    return {"success": True, "message": "Status updated to Did Not Attend"}
 
 
 @router.post("/fetch-interview-analysis")
@@ -998,18 +994,23 @@ async def submit_answers(
 
                     if bg_analysis:
                         bg_analysis.status = models.StatusEnum.completed
-                        bg_analysis.interview_analysis_date = timezone_utils.get_ist_now()
+                        bg_analysis.interview_analysis_date = (
+                            timezone_utils.get_ist_now()
+                        )
                         db_session.add(bg_analysis)
-                        
+
                         session_obj = db_session.exec(
                             select(models.InterviewSessions).where(
-                                models.InterviewSessions.interview_session_id == interview_session_id
+                                models.InterviewSessions.interview_session_id
+                                == interview_session_id
                             )
                         ).first()
                         if session_obj:
-                            session_obj.status = models.InterviewSessionStatusEnum.completed
+                            session_obj.status = (
+                                models.InterviewSessionStatusEnum.completed
+                            )
                             db_session.add(session_obj)
-                            
+
                         db_session.commit()
                 return res
 
