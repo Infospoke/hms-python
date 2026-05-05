@@ -48,7 +48,7 @@ async def send_email(
 
         fm = FastMail(get_mail_config())
         await fm.send_message(message)
-        print(f"Email sent: {template_name}")
+        logger.info(f"Email sent: {template_name}")
         return True
     except Exception as err:
         logger.error(f"Error sending email: {err}")
