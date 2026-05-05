@@ -12,10 +12,10 @@ class StatusEnum(str, Enum):
     completed = "completed"
 
 class InterviewSessionStatusEnum(str, Enum):
-    completed = "Completed"
-    scheduled = "Scheduled"
-    upcoming = "Upcoming"
-    did_not_attend = "Did Not Attend"
+    completed = "completed"
+    scheduled = "scheduled"
+    upcoming = "upcoming"
+    did_not_attend = "did_not_attend"
 
 
 class ProctoringEventType(str, Enum):
