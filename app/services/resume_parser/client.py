@@ -94,7 +94,7 @@ class Client(GeminiClient):
                 "success": True,
                 "analysis": validated_analysis,
                 "processing_time": total_processing_time,
-                "model_used": self.model,
+                "model_used": self.model_name,
                 "error": None,
             }
         except Exception as e:

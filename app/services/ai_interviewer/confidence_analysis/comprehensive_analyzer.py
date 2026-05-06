@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class ComprehensiveAnalyzer(GeminiClient):
     def __init__(self, api_key=None):
         super().__init__(model=config.GEMINI_MODEL_FOR_AI_INTERVIEWER)
-        logger.info(f"ComprehensiveAnalyzer initialized with model: {self.model}")
+        logger.info(f"ComprehensiveAnalyzer initialized with model: {self.model_name}")
 
     def analyze(self, text):
         if not text:
