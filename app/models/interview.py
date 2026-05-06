@@ -48,6 +48,7 @@ class InterviewSessions(SQLModel, table=(True)):
     )
     is_deleted: bool = Field(default=False)
     exam_exit_password: str = Field(max_length=255)
+    interview_scheduled_datetime: Optional[datetime] = Field(default=None)
 
 
 class InterviewAnalysis(SQLModel, table=(True)):
@@ -67,6 +68,7 @@ class InterviewAnalysis(SQLModel, table=(True)):
     is_deleted: bool = Field(default=False)
     job_id: int = Field(foreign_key="tb_job_details.job_id")
     interview_analysis_date: Optional[datetime] = Field(default=None)
+    interview_started_datetime: Optional[datetime] = Field(default=None)
 
 
 class QNA_Analysis(SQLModel, table=(True)):

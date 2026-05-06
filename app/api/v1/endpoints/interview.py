@@ -113,6 +113,32 @@ def create_interview_session(
             )
             session.commit()
 
+        if "interview_scheduled_datetime" not in columns:
+            logger.info(
+                f"Patching {models.InterviewSessions.__tablename__} table: adding interview_scheduled_datetime column"
+            )
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN interview_scheduled_datetime TIMESTAMP NULL"
+                )
+            )
+            session.commit()
+
+        analysis_columns = [
+            c["name"]
+            for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)
+        ]
+        if "interview_started_datetime" not in analysis_columns:
+            logger.info(
+                f"Patching {models.InterviewAnalysis.__tablename__} table: adding interview_started_datetime column"
+            )
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN interview_started_datetime TIMESTAMP NULL"
+                )
+            )
+            session.commit()
+
         session.commit()
 
         job_application = session.exec(
@@ -249,6 +275,7 @@ def schedule_interview(
         interview_session.is_scheduled = True
         interview_session.schedule_email_sent = False  # Ensure worker picks it up
         interview_session.status = models.InterviewSessionStatusEnum.scheduled
+        interview_session.interview_scheduled_datetime = timezone_utils.get_ist_now()
 
         session.add(interview_session)
         session.commit()
@@ -333,6 +360,22 @@ def admin_schedule_interview(
             )
             session.commit()
 
+        if "interview_scheduled_datetime" not in session_columns:
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN interview_scheduled_datetime TIMESTAMP NULL"
+                )
+            )
+            session.commit()
+
+        if "interview_started_datetime" not in analysis_columns:
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewAnalysis.__tablename__} ADD COLUMN interview_started_datetime TIMESTAMP NULL"
+                )
+            )
+            session.commit()
+
         # --- Look up (or auto-create) the interview session ---
         interview_session = session.exec(
             select(models.InterviewSessions).where(
@@ -405,6 +448,7 @@ def admin_schedule_interview(
         interview_session.is_scheduled = True
         interview_session.schedule_email_sent = False
         interview_session.status = models.InterviewSessionStatusEnum.scheduled
+        interview_session.interview_scheduled_datetime = timezone_utils.get_ist_now()
 
         session.add(interview_session)
         session.commit()
@@ -550,11 +594,44 @@ def fetch_interview_analysis(
             )
         ).first()
 
+        interview_session = session.exec(
+            select(models.InterviewSessions).where(
+                models.InterviewSessions.interview_session_id
+                == interview_analysis.interview_session_id
+            )
+        ).first()
+
+        scheduled_dt_api = (
+            timezone_utils.format_datetime_for_api(
+                interview_session.interview_scheduled_datetime
+            )
+            if (
+                interview_session
+                and getattr(interview_session, "interview_scheduled_datetime", None)
+            )
+            else None
+        )
+        started_dt_api = (
+            timezone_utils.format_datetime_for_api(
+                interview_analysis.interview_started_datetime
+            )
+            if getattr(interview_analysis, "interview_started_datetime", None)
+            else None
+        )
+
+        interview_timeline = []
+        if scheduled_dt_api:
+            interview_timeline.append(scheduled_dt_api)
+
+        if started_dt_api:
+            interview_timeline.append(started_dt_api)
+
         analysis_data = {
             "application_id": interview_analysis.application_id,
             "status": interview_analysis.status,
             "total_score": interview_analysis.total_score,
             "recommendation": interview_analysis.recommendation,
+            "interview_timeline": interview_timeline,
             "candidate_name": (
                 f"{job_application.first_name} {job_application.last_name}"
                 if job_application
@@ -806,6 +883,8 @@ def start_interview_generation(interview_session_id: str, session: Session):
     ):
         interview_analysis.application_id = interview_session.application_id
         interview_analysis.status = models.StatusEnum.in_progress
+        if getattr(interview_analysis, "interview_started_datetime", None) is None:
+            interview_analysis.interview_started_datetime = timezone_utils.get_ist_now()
     else:
         job_app = session.exec(
             select(models.JobApplications).where(
@@ -817,6 +896,7 @@ def start_interview_generation(interview_session_id: str, session: Session):
             interview_session_id=interview_session.interview_session_id,
             status=models.StatusEnum.in_progress,
             job_id=job_app.job_id if job_app else None,
+            interview_started_datetime=timezone_utils.get_ist_now(),
         )
 
     session.add(interview_session)
