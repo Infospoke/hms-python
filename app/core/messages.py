@@ -52,7 +52,7 @@ DB_INIT_ERROR = lambda err: f"Database error during initialization: {str(err)}"
 LLM_ANALYSIS_FAILED = lambda err: f"LLM analysis failed: {err}"
 PARSING_FAILED = lambda err: f"Parsing failed: {str(err)}"
 JSON_OBJ_NOT_FOUND = "No JSON object found in the string."
-GENAI_IMPORT_ERROR = "google-generativeai library is required. Install with: pip install google-generativeai"
+GENAI_IMPORT_ERROR = "google-genai library is required. Install with: pip install google-genai"
 GEMINI_INIT_ERROR = (
     lambda model, err: f"Failed to initialize Gemini model '{model}': {str(err)}"
 )

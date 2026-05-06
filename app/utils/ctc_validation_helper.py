@@ -1,7 +1,6 @@
 import re
 import json
 import httpx
-import google.generativeai as genai
 from fastapi import HTTPException
 from typing import Optional
 from app.schemas import (

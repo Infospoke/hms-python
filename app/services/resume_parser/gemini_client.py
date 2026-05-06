@@ -6,7 +6,8 @@ import app.core.config as consts
 from app.core.exceptions import GeminiAPIException
 
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
 except ImportError:
     genai = None
 logging.basicConfig(level=logging.INFO)
@@ -24,13 +25,11 @@ class GeminiClient:
         if genai is None:
             raise ImportError(consts.GENAI_IMPORT_ERROR)
         try:
-            genai.configure(api_key=consts.GOOGLE_API_KEY)
-            self.model = genai.GenerativeModel(
-                model_name=model, generation_config={"temperature": 0.0}
-            )
-            logger.info(f"Gemini model initialized successfully: {model}")
+            self.client = genai.Client(api_key=consts.GOOGLE_API_KEY)
+            self.model_name = model
+            logger.info(f"Gemini client initialized successfully for model: {model}")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini model: {str(e)}")
+            logger.error(f"Failed to initialize Gemini client: {str(e)}")
             raise GeminiAPIException(consts.GEMINI_INIT_ERROR(model, e), 500, e)
 
     def generate_response(
@@ -46,7 +45,15 @@ class GeminiClient:
         try:
             start_time = time.time()
             with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(self.model.generate_content, final_prompt)
+                future = executor.submit(
+                    self.client.models.generate_content,
+                    model=self.model_name,
+                    contents=final_prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.0,
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                    )
+                )
                 response = future.result(timeout=GEMINI_REQUEST_TIMEOUT_SECONDS)
             end_time = time.time()
             processing_time = end_time - start_time
@@ -58,7 +65,7 @@ class GeminiClient:
                 "success": True,
                 "response": response_content,
                 "processing_time": processing_time,
-                "model": str(self.model),
+                "model": self.model_name,
                 "prompt_tokens": len(prompt.split()),
                 "error": None,
             }
@@ -77,7 +84,10 @@ class GeminiClient:
 
     def count_tokens(self, text: str) -> int:
         try:
-            return self.model.count_tokens(text).total_tokens
+            return self.client.models.count_tokens(
+                model=self.model_name,
+                contents=text
+            ).total_tokens
         except Exception as e:
             logger.error(f"Error counting tokens: {e}")
             return len(text) // 4
