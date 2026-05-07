@@ -165,7 +165,7 @@ SENIORITY_TO_YEO = {
 
 
 class GenerateJobDescriptionRequest(BaseModel):
-    job_title: str
+    job_title: str = ""
     department: str = ""
     location: str = ""
     seniority_level: str = ""
@@ -180,6 +180,8 @@ class GenerateJobDescriptionRequest(BaseModel):
     years_of_experience: str = ""
     required_certifications: List[str] = []
     languages: str = "English"
+    old_job_description: Optional[str] = ""
+    update_parameter: Optional[str] = ""
 
 
 class JobDescriptionOutput(BaseModel):

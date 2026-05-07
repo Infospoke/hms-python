@@ -137,9 +137,36 @@ def ai_suggest_nice_to_have_skills(data: AISuggestSkillsRequest):
 
 @router.post("/generate-job-description")
 def generate_job_description(data: GenerateJobDescriptionRequest):
-    """Generate a comprehensive job description using AI based on job details."""
+    """Generate or rewrite a comprehensive job description using AI based on details or an old JD."""
     try:
         generator = JobDescriptionGenerator()
+        if data.old_job_description and data.update_parameter:
+            allowed_parameters = {
+                "Rewrite for Senior level",
+                "Rewrite for Junior Level",
+                "Make Concise",
+                "Make more Technical",
+                "Expand Responsibilities",
+            }
+            if data.update_parameter not in allowed_parameters:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid update_parameter.",
+                )
+
+            result = generator.rewrite_job_description(
+                old_job_description=data.old_job_description,
+                update_parameter=data.update_parameter,
+            )
+            if result.get("success"):
+                rewritten_text = result.get("rewritten_job_description", "")
+                return Response(content=rewritten_text, media_type="text/plain")
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to rewrite job description: {result.get('error')}",
+                )
+
         result = generator.generate_job_description(
             job_title=data.job_title,
             department=data.department,
