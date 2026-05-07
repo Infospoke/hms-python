@@ -160,7 +160,11 @@ def generate_job_description(data: GenerateJobDescriptionRequest):
             )
             if result.get("success"):
                 rewritten_text = result.get("rewritten_job_description", "")
-                return Response(content=rewritten_text, media_type="text/plain")
+                word_count = len(rewritten_text.split())
+                return {
+                    "job_description": rewritten_text,
+                    "word_count": word_count
+                }
             else:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -228,8 +232,12 @@ def generate_job_description(data: GenerateJobDescriptionRequest):
             text_parts.append(f"About Company: {about_company}")
 
             job_description_text = "\n".join(text_parts)
+            word_count = len(job_description_text.split())
 
-            return Response(content=job_description_text, media_type="text/plain")
+            return {
+                "job_description": job_description_text,
+                "word_count": word_count
+            }
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
