@@ -41,7 +41,7 @@ async def download_seb_config(
 
 
 @router.get("/join/{session_id}")
-async def join_interview_seb(
+async def join_interview_seb( 
     request: Request, session_id: str, session: Session = Depends(deps.get_session)
 ):
 

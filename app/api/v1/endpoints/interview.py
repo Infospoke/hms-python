@@ -285,6 +285,18 @@ def schedule_interview(
             interview_session, background_tasks, session
         )
 
+        # Update JobApplications stage to INTERVIEW
+        job_app = session.exec(
+            select(models.JobApplications).where(
+                models.JobApplications.id == interview_session.application_id
+            )
+        ).first()
+        if job_app:
+            job_app.current_stage = "INTERVIEW"
+            job_app.stage_entry_date = timezone_utils.get_ist_now()
+            session.add(job_app)
+            session.commit()
+
         return {
             "success": True,
             "message": f"Interview successfully scheduled for {data.scheduled_date} at {data.scheduled_time} IST. Link will be sent 30 minutes before the interview.",
@@ -459,6 +471,18 @@ def admin_schedule_interview(
             interview_session, background_tasks, session
         )
 
+        # Update JobApplications stage to INTERVIEW
+        job_app = session.exec(
+            select(models.JobApplications).where(
+                models.JobApplications.id == data.application_id
+            )
+        ).first()
+        if job_app:
+            job_app.current_stage = "INTERVIEW"
+            job_app.stage_entry_date = timezone_utils.get_ist_now()
+            session.add(job_app)
+            session.commit()
+
         return {
             "success": True,
             "message": (
@@ -526,6 +550,12 @@ def update_final_candidate_decision(
             job_title=job.job_title if job else None,
             job_id=job_application.job_id,
         )
+
+        # Update JobApplications stage only for HIRED
+        if data.decision == "HIRED":
+            job_application.current_stage = "HIRED"
+            job_application.stage_entry_date = timezone_utils.get_ist_now()
+            session.add(job_application)
 
         session.add(candidate_info)
         session.commit()

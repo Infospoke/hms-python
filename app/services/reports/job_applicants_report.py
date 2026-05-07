@@ -121,11 +121,11 @@ def generate_bar_chart(x_labels, values, label="No. of Applications", num_ticks=
     clean_values = [safe_float(v) for v in values]
     max_val = max(clean_values) if clean_values else 10
     ax.set_ylim(0, max_val + (5 if max_val > 5 else 2))
-    ax.set_ylabel(label, fontsize=7)
+    ax.set_ylabel(label, fontsize=12)
 
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", which="major", labelsize=7)
+    ax.tick_params(axis="both", which="major", labelsize=12)
     ax.grid(axis="y", linestyle="-", alpha=0.2)
 
     if len(x_labels) <= 12:
@@ -175,9 +175,9 @@ def generate_pie_with_legend(
         autopct=pct_filter if not is_empty else None,
         startangle=140,
         textprops=(
-            {"fontsize": 7, "color": "white", "fontweight": "bold"}
+            {"fontsize": 12, "color": "white", "fontweight": "bold"}
             if not is_empty
-            else {"fontsize": 7, "color": "grey"}
+            else {"fontsize": 12, "color": "grey"}
         ),
         explode=explode,
         wedgeprops=(
@@ -212,7 +212,7 @@ def generate_pie_with_legend(
                 center_subtext,
                 ha="center",
                 va="center",
-                fontsize=7,
+                fontsize=12,
                 color="#6B7280",
             )
 
@@ -232,7 +232,7 @@ def generate_pie_with_legend(
         loc="center left",
         bbox_to_anchor=(1, 0, 0.5, 1),
         frameon=False,
-        fontsize=7,
+        fontsize=12,
     )
 
     return _buf_from_fig(fig)
@@ -260,7 +260,7 @@ def generate_conversion_donut(offered, remaining):
     rate_text = f"{rate:.1f}%" if offered > 0 else "0%"
 
     ax.text(0, 0.1, rate_text, ha="center", va="center", fontsize=16, fontweight="bold")
-    ax.text(0, -0.2, "Offer Conversion\nRate", ha="center", va="center", fontsize=7)
+    ax.text(0, -0.2, "Offer Conversion\nRate", ha="center", va="center", fontsize=12)
 
     ax.axis("equal")
     ax.legend(
@@ -269,9 +269,9 @@ def generate_conversion_donut(offered, remaining):
         loc="center left",
         bbox_to_anchor=(1, 0, 0.5, 1),
         frameon=False,
-        fontsize=7,
-        handlelength=1,
-        handleheight=1,
+        fontsize=11,
+        handlelength=1.2,
+        handleheight=1.2,
     )
 
     return _buf_from_fig(fig)

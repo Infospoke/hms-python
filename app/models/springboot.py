@@ -58,6 +58,8 @@ class JobApplications(SQLModel, table=(True)):
     resume: Optional[str] = Field(max_length=255)
     source: Optional[str] = Field(default=None, max_length=255)
     rejected: Optional[bool] = Field(default=False)
+    stage_entry_date: Optional[datetime] = Field(default=None)
+    current_stage: Optional[str] = Field(default=None, max_length=255)
     # is_deleted: bool = Field(default=False)
 
 

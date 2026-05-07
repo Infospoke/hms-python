@@ -306,7 +306,15 @@ def create_or_update_resume_analysis_db(
 
         # Always derive status from the final score
         final_score = resume_analysis.final_score or 0.0
-        resume_analysis.status = "Shortlisted" if final_score > 50 else "Not Shortlisted"
+        resume_analysis.status = "Shortlisted" if final_score >= 50 else "Not Shortlisted"
+
+        # Update JobApplications stage and rejection status
+        job_application.current_stage = resume_analysis.status
+        job_application.stage_entry_date = timezone_utils.get_ist_now()
+        if final_score < 50:
+            job_application.rejected = True
+        
+        session.add(job_application)
 
         candidate_name = get_candidate_name(session, job_application.id)
 
