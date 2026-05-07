@@ -650,12 +650,10 @@ def fetch_interview_analysis(
             else None
         )
 
-        interview_timeline = []
-        if scheduled_dt_api:
-            interview_timeline.append(scheduled_dt_api)
+        interview_timeline = {}
+        interview_timeline["scheduled_dt"] = scheduled_dt_api if scheduled_dt_api else None
+        interview_timeline["started_dt"] = started_dt_api if started_dt_api else None
 
-        if started_dt_api:
-            interview_timeline.append(started_dt_api)
 
         analysis_data = {
             "application_id": interview_analysis.application_id,
