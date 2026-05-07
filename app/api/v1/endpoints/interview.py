@@ -177,6 +177,18 @@ def create_interview_session(
             background_tasks,
             session,
         )
+        # Update JobApplications stage to INTERVIEW
+        job_app = session.exec(
+            select(models.JobApplications).where(
+                models.JobApplications.id == data.application_id
+            )
+        ).first()
+        if job_app:
+            job_app.current_stage = "INTERVIEW"
+            job_app.stage_entry_date = timezone_utils.get_ist_now()
+            session.add(job_app)
+            session.commit()
+
 
         return {
             "success": True,
@@ -285,17 +297,6 @@ def schedule_interview(
             interview_session, background_tasks, session
         )
 
-        # Update JobApplications stage to INTERVIEW
-        job_app = session.exec(
-            select(models.JobApplications).where(
-                models.JobApplications.id == interview_session.application_id
-            )
-        ).first()
-        if job_app:
-            job_app.current_stage = "INTERVIEW"
-            job_app.stage_entry_date = timezone_utils.get_ist_now()
-            session.add(job_app)
-            session.commit()
 
         return {
             "success": True,
