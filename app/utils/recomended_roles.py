@@ -97,7 +97,7 @@ class SkillGenerator:
     def __init__(self):
         pass
 
-    def generate_must_have_skills(
+    async def generate_must_have_skills(
         self,
         job_title: str,
         department: str = "",
@@ -110,7 +110,7 @@ class SkillGenerator:
         )
 
         try:
-            result = asyncio.run(call_llm(prompt))
+            result = await call_llm(prompt)
             skills = result if isinstance(result, list) else []
             for skill in skills:
                 skill["is_ai_suggested"] = True
@@ -120,7 +120,7 @@ class SkillGenerator:
             logger.error(f"Error generating must-have skills: {e}")
             return {"success": False, "error": str(e)}
 
-    def generate_nice_to_have_skills(
+    async def generate_nice_to_have_skills(
         self,
         job_title: str,
         department: str = "",
@@ -133,7 +133,7 @@ class SkillGenerator:
         )
 
         try:
-            result = asyncio.run(call_llm(prompt))
+            result = await call_llm(prompt)
             skills = result if isinstance(result, list) else []
             for skill in skills:
                 skill["is_ai_suggested"] = True
@@ -148,7 +148,7 @@ class JobDescriptionGenerator:
     def __init__(self):
         pass
 
-    def generate_job_description(
+    async def generate_job_description(
         self,
         job_title: str,
         department: str = "",
@@ -185,7 +185,7 @@ class JobDescriptionGenerator:
         )
 
         try:
-            result = asyncio.run(call_llm(prompt))
+            result = await call_llm(prompt)
             logger.info(f"JD generation response success, length: {len(str(result))}")
             logger.info(f"Parsed JD result: {result}")
             return {"success": True, "job_description": result}

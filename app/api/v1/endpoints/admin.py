@@ -66,11 +66,11 @@ def refresh_interview_configs():
 
 
 @router.post("/ai-suggest-must-have-skills")
-def ai_suggest_must_have_skills(data: AISuggestSkillsRequest):
+async def ai_suggest_must_have_skills(data: AISuggestSkillsRequest):
     """Generate AI-suggested must-have (mandatory) skills based on job details."""
     try:
         generator = SkillGenerator()
-        result = generator.generate_must_have_skills(
+        result = await generator.generate_must_have_skills(
             job_title=data.job_title,
             department=data.department,
             business_case=data.business_case,
@@ -101,11 +101,11 @@ def ai_suggest_must_have_skills(data: AISuggestSkillsRequest):
 
 
 @router.post("/ai-suggest-nice-to-have-skills")
-def ai_suggest_nice_to_have_skills(data: AISuggestSkillsRequest):
+async def ai_suggest_nice_to_have_skills(data: AISuggestSkillsRequest):
     """Generate AI-suggested nice-to-have (optional) skills based on job details."""
     try:
         generator = SkillGenerator()
-        result = generator.generate_nice_to_have_skills(
+        result = await generator.generate_nice_to_have_skills(
             job_title=data.job_title,
             department=data.department,
             business_case=data.business_case,
@@ -136,11 +136,11 @@ def ai_suggest_nice_to_have_skills(data: AISuggestSkillsRequest):
 
 
 @router.post("/generate-job-description")
-def generate_job_description(data: GenerateJobDescriptionRequest):
+async def generate_job_description(data: GenerateJobDescriptionRequest):
     """Generate a comprehensive job description using AI based on job details."""
     try:
         generator = JobDescriptionGenerator()
-        result = generator.generate_job_description(
+        result = await generator.generate_job_description(
             job_title=data.job_title,
             department=data.department,
             location=data.location,
