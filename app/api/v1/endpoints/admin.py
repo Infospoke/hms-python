@@ -18,6 +18,8 @@ from app.schemas import (
     LanguagesResponse,
     QualificationsResponse,
     CandidateRejectedRequest,
+    JobDescriptionRevision,
+    JobDescriptionRevisionsResponse,
 )
 from app.utils.gemini_llm import call_llm
 from app.utils.requirements_helper import (
@@ -423,4 +425,40 @@ def candidate_rejected(
         traceback.print_exc()
         raise HTTPException(
             status_code=500, detail="Failed to update candidate rejected status"
+        )
+
+
+@router.get("/jobs/{job_id}/revisions", response_model=JobDescriptionRevisionsResponse)
+def get_job_description_revisions(
+    job_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        rows = session.exec(
+            select(models.JobDescriptionRevisions)
+            .where(models.JobDescriptionRevisions.job_id == job_id)
+            .order_by(models.JobDescriptionRevisions.revision_index)
+        ).all()
+
+        revisions = [
+            JobDescriptionRevision(
+                id=r.id,
+                job_id=r.job_id,
+                revision_index=r.revision_index,
+                job_description=r.job_description,
+                update_parameter=r.update_parameter,
+                created_at=r.created_at,
+            )
+            for r in rows
+        ]
+
+        return JobDescriptionRevisionsResponse(
+            job_id=job_id, revisions=revisions, total_revisions=len(revisions)
+        )
+    except Exception as e:
+        logger.error(f"Error fetching JD revisions for job_id={job_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch job description revisions",
         )
