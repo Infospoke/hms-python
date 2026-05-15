@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 from app.core import config as consts
 from app.models import ResumeAnalysis
 from enum import Enum
@@ -165,7 +166,8 @@ SENIORITY_TO_YEO = {
 
 
 class GenerateJobDescriptionRequest(BaseModel):
-    job_title: str
+    job_id: Optional[int] = None
+    job_title: str = ""
     department: str = ""
     location: str = ""
     seniority_level: str = ""
@@ -180,6 +182,8 @@ class GenerateJobDescriptionRequest(BaseModel):
     years_of_experience: str = ""
     required_certifications: List[str] = []
     languages: str = "English"
+    old_job_description: Optional[str] = ""
+    update_parameter: Optional[str] = ""
 
 
 class JobDescriptionOutput(BaseModel):
@@ -283,3 +287,21 @@ class QualificationsResponse(BaseModel):
 class CandidateRejectedRequest(BaseModel):
     application_id: int
     rejected: bool
+
+
+# --- Job Description Revisions ---
+
+
+class JobDescriptionRevision(BaseModel):
+    id: int
+    job_id: int
+    revision_index: int
+    job_description: str
+    update_parameter: Optional[str] = None
+    created_at: datetime
+
+
+class JobDescriptionRevisionsResponse(BaseModel):
+    job_id: int
+    revisions: List[JobDescriptionRevision]
+    total_revisions: int
