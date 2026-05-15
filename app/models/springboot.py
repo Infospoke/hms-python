@@ -26,6 +26,17 @@ class Jobs(SQLModel, table=True):
     job_country: str = Field(max_length=255)
 
 
+class JobDescriptionRevisions(SQLModel, table=True):
+    __tablename__ = "tb_job_description_revisions"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_id: int = Field(foreign_key="tb_jobs.job_id", index=True)
+    revision_index: int = Field(index=True)
+    job_description: str = Field(sa_column=Column(Text, nullable=False))
+    update_parameter: Optional[str] = Field(default=None, max_length=100)
+    created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)
+
+
 class JobDetails(SQLModel, table=(True)):
     __tablename__ = "tb_job_details"
     id: Optional[int] = Field(default=None, primary_key=True)
