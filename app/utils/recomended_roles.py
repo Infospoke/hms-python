@@ -1,6 +1,5 @@
 import json
 import logging
-import asyncio
 from app.utils.gemini_llm import call_llm
 
 logger = logging.getLogger(__name__)
@@ -213,7 +212,7 @@ class JobDescriptionGenerator:
             logger.error(f"JD generation failed: {e}")
             return {"success": False, "error": str(e)}
 
-    def rewrite_job_description(
+    async def rewrite_job_description(
         self,
         old_job_description: str,
         update_parameter: str,
@@ -238,7 +237,7 @@ class JobDescriptionGenerator:
         )
 
         try:
-            result = asyncio.run(call_llm(prompt))
+            result = await call_llm(prompt)
             logger.info(f"JD rewrite response success, length: {len(str(result))}")
             return {"success": True, "rewritten_job_description": result.get("rewritten_job_description", "")}
         except Exception as e:

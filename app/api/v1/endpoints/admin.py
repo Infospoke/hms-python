@@ -206,7 +206,7 @@ async def generate_job_description(
                     detail=f"Job not found for job_id {data.job_id}.",
                 )
 
-            result = generator.rewrite_job_description(
+            result = await generator.rewrite_job_description(
                 old_job_description=data.old_job_description,
                 update_parameter=data.update_parameter,
             )
