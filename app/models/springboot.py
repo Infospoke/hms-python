@@ -313,7 +313,7 @@ class BGV(SQLModel, table=True):
 class RoleRequirement(SQLModel, table=True):
     __tablename__ = "tb_role_requirements"
     id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_job_details.job_id")
+    job_id: int = Field(foreign_key="tb_jobs.job_id")
     skill_title: str = Field(max_length=255)
     skill_description: str = Field(sa_column=Column(Text))
     is_mandatory: bool = Field(default=False)
