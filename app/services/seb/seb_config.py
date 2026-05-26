@@ -11,7 +11,7 @@ def build_seb_config(session_id: str, interview_url: str, hashed_exam_exit_passw
         "startURL": interview_url,
         "restartExamURL": f"{consts.BASE_URL}/api/seb/join/{session_id}",
         "restartExamText": "Restart Interview",
-        "quitURL": f"{consts.HOST}/interview/submitted",
+        "quitURL": f"{consts.INTERVIEW_FRONTEND}/interview/submitted",
         "browserExamKey": consts.SEB_BROWSER_EXAM_KEY,
         "sendBrowserExamKey": True,
         "sendConfigKey": False,
@@ -20,7 +20,7 @@ def build_seb_config(session_id: str, interview_url: str, hashed_exam_exit_passw
         "allowedURLs": [
             {"address": consts.BASE_URL, "includeSubdomains": True},
             {"address": f"https://{interview_domain}", "includeSubdomains": True},
-            {"address": consts.HOST, "includeSubdomains": True},
+            {"address": consts.INTERVIEW_FRONTEND, "includeSubdomains": True},
         ],
         "prohibitedProcesses": [
             {

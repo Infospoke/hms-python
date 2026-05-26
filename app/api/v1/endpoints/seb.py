@@ -26,7 +26,7 @@ async def download_seb_config(
             status_code=status.HTTP_404_NOT_FOUND, detail="Session not found."
         )
 
-    interview_url = f"{consts.HOST}/welcome/{session_id}/"
+    interview_url = f"{consts.INTERVIEW_FRONTEND}/welcome/{session_id}/"
     seb_bytes = build_seb_config(
         session_id, interview_url, interview_session.exam_exit_password
     )
@@ -50,7 +50,7 @@ async def join_interview_seb(
     seb_proto = "sebs://" if is_https else "seb://"
 
     seb_launch_url = f"sebs://2g7634mr-5002.inc1.devtunnels.ms/api/seb/download/{session_id}"
-    # seb_launch_url = f"{consts.HOST}/welcome/{session_id}/"
+    # seb_launch_url = f"{consts.INTERVIEW_FRONTEND}/welcome/{session_id}/"
     # seb_launch_url = f"seb://2g7634mr-5002.inc1.devtunnels.ms/api/seb/download/{session_id}"
     # seb_launch_url = f"{seb_proto}{domain}/welcome/{session_id}"
     download_url = f"/api/seb/download/{session_id}"

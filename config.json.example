@@ -38,7 +38,7 @@
             "AWS_SECRET_KEY": "YOUR_AWS_SECRET_KEY",
             "INFOSPOKE_S3_BUCKET_NAME": "your-bucket-name",
             "SQS_ANALYZE_IMAGE_QUEUE_URL": "https://sqs.your-region.amazonaws.com/your-account/your-queue",
-            "HOST": "http://localhost:8000"
+            "INTERVIEW_FRONTEND": "http://localhost:8000"
         }
     }
 }

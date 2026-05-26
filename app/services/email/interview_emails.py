@@ -22,7 +22,7 @@ def send_interview_invitation(
     background_tasks: BackgroundTasks,
     db_session: Session,
 ):
-    link = f"{consts.HOST}/requirement-download/schedule/{interview_session.interview_session_id}/"
+    link = f"{consts.INTERVIEW_FRONTEND}/requirement-download/schedule/{interview_session.interview_session_id}/"
     if type(interview_session) is not models.InterviewSessions:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Interview Session not found"
@@ -89,7 +89,7 @@ def send_interview_link_email_sync(
     job_title, candidate_name, candidate_email = get_candidate_details(
         interview_session.application_id, db_session
     )
-    link = f"{consts.HOST}/requirement-download/prepare/{interview_session.interview_session_id}/"
+    link = f"{consts.INTERVIEW_FRONTEND}/requirement-download/prepare/{interview_session.interview_session_id}/"
     seb_join_url = f"{consts.PYTHON_BACKEND_URL}/api/seb/join/{interview_session.interview_session_id}"
     
     exam_exit_password = utils.generate_quit_password()

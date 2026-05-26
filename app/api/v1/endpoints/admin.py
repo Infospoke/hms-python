@@ -1,6 +1,6 @@
 import logging
 import traceback
-from fastapi import APIRouter, HTTPException, status, Response
+from fastapi import APIRouter, HTTPException, status, Request
 from app.core import config as consts
 from app.schemas import (
     AISuggestSkillsRequest,
@@ -28,17 +28,23 @@ from app.utils.requirements_helper import (
     build_qualifications_prompt,
 )
 
-from fastapi import APIRouter, HTTPException, status, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, status, Depends, File, UploadFile, Form
+from fastapi.responses import JSONResponse
+from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 from datetime import datetime
 from app.db.session import get_session
 from app import models
+import json
+import os
+from typing import Optional
+from app.utils.utils import _wants_html, _format_seconds_readable
 
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+templates = Jinja2Templates(directory=os.path.join(consts.PROJECT_ROOT, "templates"))
 
 
 @router.post("/config/refresh")
@@ -462,3 +468,411 @@ def get_job_description_revisions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch job description revisions",
         )
+
+
+@router.get("/linkedin/login")
+async def linkedin_login(request: Request):
+    import urllib.parse
+    
+    scopes = "openid profile email w_member_social"
+
+    if not consts.LINKEDIN_CLIENT_ID or not consts.LINKEDIN_CLIENT_SECRET or not consts.LINKEDIN_REDIRECT_URI:
+        error_message = "LinkedIn OAuth configuration is incomplete. Please set LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, and LINKEDIN_REDIRECT_URI in the config."
+        logger.error(error_message)
+        if _wants_html(request):
+            return templates.TemplateResponse(
+                "linkedin/callback.html",
+                {
+                    "request": request,
+                    "title": "LinkedIn connection error",
+                    "message": "LinkedIn OAuth configuration is incomplete.",
+                    "details": error_message,
+                    "accent": "#b42318",
+                    "action_label": "Try again",
+                    "name": None,
+                    "expires_in": None,
+                    "expires_readable": None,
+                },
+                status_code=500,
+            )
+        raise HTTPException(status_code=500, detail=error_message)
+    
+    auth_url = (
+        "https://www.linkedin.com/oauth/v2/authorization?"
+        f"response_type=code"
+        f"&client_id={consts.LINKEDIN_CLIENT_ID}"
+        f"&redirect_uri={urllib.parse.quote(consts.LINKEDIN_REDIRECT_URI)}"
+        f"&state=linkedin_auth_state"
+        f"&scope={urllib.parse.quote(scopes)}"
+    )
+    return {"auth_url": auth_url}
+
+
+@router.get("/linkedin/callback")
+async def linkedin_callback(
+    request: Request,
+    code: str = None,
+    error: str = None,
+    error_description: str = None,
+):
+    login_url = f"{consts.ADMIN_FRONTEND}/linkedin/login"
+
+    if error:
+        if _wants_html(request):
+            return templates.TemplateResponse(
+                "linkedin/callback.html",
+                {
+                    "request": request,
+                    "title": "LinkedIn connection failed",
+                    "message": "LinkedIn authentication failed.",
+                    "details": f"Error: " + error_description if error_description else error,
+                    "accent": "#b42318",
+                    "action_label": "Try again",
+                    "name": None,
+                    "expires_in": None,
+                    "expires_readable": None,
+                    "login_url": login_url,
+                },
+                status_code=400,
+            )
+
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": error,
+                "error_description": error_description,
+                "message": "LinkedIn authentication failed.",
+            },
+        )
+    
+    if not code:
+        if _wants_html(request):
+            return templates.TemplateResponse(
+                "linkedin/callback.html",
+                {
+                    "request": request,
+                    "title": "LinkedIn connection failed",
+                    "message": "Authorization code is missing.",
+                    "details": "The callback did not include a code parameter.",
+                    "accent": "#b42318",
+                    "action_label": "Try again",
+                    "login_url": login_url,
+                    "name": None,
+                    "expires_in": None,
+                    "expires_readable": None,
+                },
+                status_code=400,
+            )
+        raise HTTPException(status_code=400, detail="Authorization code is missing.")
+        
+    try:
+        import httpx
+        
+        token_url = "https://www.linkedin.com/oauth/v2/accessToken"
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": consts.LINKEDIN_REDIRECT_URI,
+            "client_id": consts.LINKEDIN_CLIENT_ID,
+            "client_secret": consts.LINKEDIN_CLIENT_SECRET,
+        }
+        
+        async with httpx.AsyncClient() as client:
+            token_resp = await client.post(token_url, data=data)
+            if token_resp.status_code != 200:
+                logger.error(f"Failed to fetch LinkedIn access token: {token_resp.text}")
+                token_resp_json = json.loads(token_resp.text) if token_resp.text else {}
+                if _wants_html(request):
+                    return templates.TemplateResponse(
+                        "linkedin/callback.html",
+                        {
+                            "request": request,
+                            "title": "LinkedIn token exchange failed",
+                            "message": "The authorization code could not be exchanged for an access token.",
+                            "details": token_resp_json.get("error_description") if token_resp_json.get("error_description") else token_resp.text,
+                            "accent": "#b42318",
+                            "action_label": "Try again",
+                            "name": None,
+                            "expires_in": None,
+                            "expires_readable": None,
+                        "login_url": login_url,
+                        },
+                        status_code=token_resp.status_code,
+                    )
+                return JSONResponse(
+                    status_code=token_resp.status_code,
+                    content={
+                        "success": False,
+                        "error": "token_exchange_failed",
+                        "message": "Failed to exchange authorization code for access token.",
+                        "detail": token_resp.text
+                    }
+                )
+            
+            token_data = token_resp.json()
+            access_token = token_data.get("access_token")
+            expires_in = token_data.get("expires_in")
+            
+            userinfo_url = "https://api.linkedin.com/v2/userinfo"
+            userinfo_headers = {"Authorization": f"Bearer {access_token}"}
+            userinfo_resp = await client.get(userinfo_url, headers=userinfo_headers)
+            
+            if userinfo_resp.status_code != 200:
+                logger.error(f"Failed to fetch LinkedIn user info: {userinfo_resp.text}")
+                if _wants_html(request):
+                    return templates.TemplateResponse(
+                        "linkedin/callback.html",
+                        {
+                            "request": request,
+                            "title": "LinkedIn profile lookup failed",
+                            "message": "The LinkedIn member profile could not be loaded.",
+                            "details": userinfo_resp.text,
+                            "accent": "#b42318",
+                            "action_label": "Try again",
+                            "name": None,
+                            "expires_in": None,
+                        "login_url": login_url,
+                            "expires_readable": None,
+                        },
+                        status_code=userinfo_resp.status_code,
+                    )
+                return JSONResponse(
+                    status_code=userinfo_resp.status_code,
+                    content={
+                        "success": False,
+                        "error": "userinfo_failed",
+                        "message": "Failed to retrieve member profile info from LinkedIn.",
+                        "detail": userinfo_resp.text
+                    }
+                )
+                
+            userinfo_data = userinfo_resp.json()
+            sub = userinfo_data.get("sub")
+            name = userinfo_data.get("name")
+            
+            if not sub:
+                if _wants_html(request):
+                        return templates.TemplateResponse(
+                            "linkedin/callback.html",
+                            {
+                                "request": request,
+                                "title": "LinkedIn profile incomplete",
+                                "message": "OpenID subject 'sub' was missing from the profile payload.",
+                                "details": "Please retry the sign-in flow.",
+                                "accent": "#b42318",
+                                "action_label": "Try again",
+                                "name": None,
+                            "login_url": login_url,
+                                "expires_in": None,
+                                "expires_readable": None,
+                            },
+                            status_code=400,
+                        )
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "success": False,
+                        "error": "missing_member_id",
+                        "message": "OpenID subject 'sub' field missing in profile info.",
+                    },
+                )
+                
+            author_urn = f"urn:li:person:{sub}"
+            
+            token_file_path = os.path.join(consts.PROJECT_ROOT, ".linkedin_token.json")
+            credentials = {
+                "access_token": access_token,
+                "author_urn": author_urn,
+                "name": name,
+                "expires_in": expires_in,
+                "authenticated_at": datetime.utcnow().isoformat()
+            }
+            
+            with open(token_file_path, "w") as f:
+                json.dump(credentials, f, indent=4)
+                
+            logger.info(f"LinkedIn authentication successful for user: {name} ({author_urn})")
+            if _wants_html(request):
+                return templates.TemplateResponse(
+                    "linkedin/callback.html",
+                    {
+                        "request": request,
+                        "title": "LinkedIn connected",
+                        "message": f"Authentication completed successfully for {name or 'the LinkedIn member'}.",
+                        "details": "You can now close this tab and return to the admin workflow.",
+                        "accent": "#067647",
+                        "action_label": "Reconnect",
+                        "login_url": login_url,
+                        "name": name,
+                        "expires_in": expires_in,
+                        "expires_readable": _format_seconds_readable(expires_in),
+                    },
+                )
+            
+            return {
+                "success": True,
+                "message": "LinkedIn authentication successful and connected!",
+                "name": name,
+                "expires_in": expires_in,
+                "expires_readable": _format_seconds_readable(expires_in),
+            }
+            
+    except Exception as e:
+        logger.error(f"Error in LinkedIn callback: {e}")
+        traceback.print_exc()
+        if _wants_html(request):
+            return templates.TemplateResponse(
+                "linkedin/callback.html",
+                {
+                    "request": request,
+                    "title": "LinkedIn connection error",
+                    "message": "An unexpected error occurred during authorization.",
+                    "details": str(e),
+                    "accent": "#b42318",
+                    "action_label": "Try again",
+                    "login_url": login_url,
+                    "name": None,
+                    "expires_in": None,
+                },
+                status_code=500,
+            )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": "unexpected_error",
+                "message": "An unexpected error occurred during authorization.",
+                "detail": str(e),
+            },
+        )
+
+
+@router.post("/linkedin/post")
+async def post_to_linkedin(
+    text: str = Form(...),
+    image: Optional[UploadFile] = File(None)
+):
+    import httpx
+    
+    token_file_path = os.path.join(consts.PROJECT_ROOT, ".linkedin_token.json")
+    if not os.path.exists(token_file_path):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="LinkedIn credentials not found. Please log in first."
+        )
+        
+    try:
+        with open(token_file_path, "r") as f:
+            credentials = json.load(f)
+            
+        access_token = credentials.get("access_token")
+        author_urn = credentials.get("author_urn")
+        
+        if not access_token or not author_urn:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials stored. Please re-authenticate."
+            )
+            
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "X-Restli-Protocol-Version": "2.0.0",
+            "LinkedIn-Version": "202605",
+            "Content-Type": "application/json"
+        }
+        
+        image_urn = None
+        
+        if image:
+            init_url = "https://api.linkedin.com/rest/images?action=initializeUpload"
+            init_payload = {
+                "initializeUploadRequest": {
+                    "owner": author_urn
+                }
+            }
+            
+            async with httpx.AsyncClient() as client:
+                init_resp = await client.post(init_url, headers=headers, json=init_payload)
+                if init_resp.status_code != 200:
+                    logger.error(f"LinkedIn image upload initialization failed: {init_resp.text}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Failed to initialize image upload: {init_resp.text}"
+                    )
+                    
+                init_data = init_resp.json()
+                value_data = init_data.get("value", {})
+                upload_url = value_data.get("uploadUrl")
+                image_urn = value_data.get("image")
+                
+                if not upload_url or not image_urn:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="LinkedIn response missing uploadUrl or image URN."
+                    )
+                    
+                image_content = await image.read()
+                upload_headers = {
+                    "Content-Type": image.content_type or "image/jpeg"
+                }
+                upload_resp = await client.put(upload_url, headers=upload_headers, content=image_content)
+                if upload_resp.status_code not in (200, 201):
+                    logger.error(f"LinkedIn image binary upload failed: {upload_resp.text}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Failed to upload binary image data: {upload_resp.text}"
+                    )
+                    
+        post_url = "https://api.linkedin.com/rest/posts"
+        
+        post_payload = {
+            "author": author_urn,
+            "commentary": text,
+            "visibility": "PUBLIC",
+            "distribution": {
+                "feedDistribution": "MAIN_FEED"
+            },
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": False
+        }
+        
+        if image_urn:
+            post_payload["content"] = {
+                "media": {
+                    "id": image_urn
+                }
+            }
+            
+        async with httpx.AsyncClient() as client:
+            post_resp = await client.post(post_url, headers=headers, json=post_payload)
+            if post_resp.status_code not in (200, 201):
+                logger.error(f"LinkedIn post creation failed: {post_resp.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to publish post to LinkedIn: {post_resp.text}"
+                )
+                
+            post_id = post_resp.headers.get("x-restli-id")
+            post_link = f"https://www.linkedin.com/feed/update/{post_id}" if post_id else None
+            
+            return {
+                "success": True,
+                "message": "Job post successfully published to LinkedIn!",
+                "post_id": post_id,
+                "post_link": post_link,
+                "author": author_urn,
+                "has_image": bool(image_urn),
+                "image_urn": image_urn
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error posting to LinkedIn: {e}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred while posting to LinkedIn: {str(e)}"
+        )
+

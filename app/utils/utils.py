@@ -1,5 +1,6 @@
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Optional
+from fastapi import Request
 from app.utils import timezone_utils
 import secrets
 import string
@@ -38,3 +39,37 @@ def format_datetime_response(data: Any) -> Any:
 def generate_quit_password(length=6):
     chars = string.ascii_letters + string.digits
     return ''.join(secrets.choice(chars) for _ in range(length))
+
+def _wants_html(request: Request) -> bool:
+    accept_header = request.headers.get("accept", "")
+    return "text/html" in accept_header.lower()
+
+
+def _format_seconds_readable(seconds: Optional[int]) -> Optional[str]:
+    if seconds is None:
+        return None
+    try:
+        total = int(seconds)
+    except Exception:
+        return str(seconds)
+
+    if total <= 0:
+        return "0 seconds"
+
+    units = [
+        ("year", 365 * 24 * 3600),
+        ("month", 30 * 24 * 3600),
+        ("day", 24 * 3600),
+        ("hour", 3600),
+        ("minute", 60),
+        ("second", 1),
+    ]
+
+    parts = []
+    remaining = total
+    for name, unit_seconds in units:
+        qty, remaining = divmod(remaining, unit_seconds)
+        if qty:
+            parts.append(f"{qty} {name}{'s' if qty != 1 else ''}")
+
+    return ", ".join(parts)

@@ -224,3 +224,4 @@ minio_data/
 
 import boto3.py
 config.json
+.linkedin_token.json
