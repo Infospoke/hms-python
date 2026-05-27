@@ -41,6 +41,34 @@ def _load_interview_configs():
                 config.configuration_name: config.configuration_value
                 for config in interview_configurations
             }
+            
+            # Proactively self-seed missing configurations to make deployment frictionless
+            if "GROQ_MODEL" not in _INTERVIEW_CONFIGS_CACHE:
+                try:
+                    new_config = models.InterviewConfiguration(
+                        configuration_name="GROQ_MODEL",
+                        configuration_value=GROQ_MODEL
+                    )
+                    session.add(new_config)
+                    session.commit()
+                    _INTERVIEW_CONFIGS_CACHE["GROQ_MODEL"] = GROQ_MODEL
+                    logger.info("Successfully seeded 'GROQ_MODEL' in database table.")
+                except Exception as seed_err:
+                    logger.error(f"Error seeding GROQ_MODEL: {seed_err}")
+
+            if "GROQ_MODEL_FOR_JOB_DESCRIPTION" not in _INTERVIEW_CONFIGS_CACHE:
+                try:
+                    new_config = models.InterviewConfiguration(
+                        configuration_name="GROQ_MODEL_FOR_JOB_DESCRIPTION",
+                        configuration_value=GROQ_MODEL_FOR_JOB_DESCRIPTION
+                    )
+                    session.add(new_config)
+                    session.commit()
+                    _INTERVIEW_CONFIGS_CACHE["GROQ_MODEL_FOR_JOB_DESCRIPTION"] = GROQ_MODEL_FOR_JOB_DESCRIPTION
+                    logger.info("Successfully seeded 'GROQ_MODEL_FOR_JOB_DESCRIPTION' in database table.")
+                except Exception as seed_err:
+                    logger.error(f"Error seeding GROQ_MODEL_FOR_JOB_DESCRIPTION: {seed_err}")
+
         logger.debug(
             f"Interview configs loaded from DB: {list(_INTERVIEW_CONFIGS_CACHE.keys())}"
         )
@@ -55,7 +83,7 @@ def _apply_interview_configs():
     global _INTERVIEW_CONFIGS_CACHE
     global ENVIRONMENT
     global GOOGLE_API_KEY, GROQ_API_KEY, WHISPER_MODEL_NAME
-    global GEMINI_MODEL, GEMINI_MODEL_FOR_AI_INTERVIEWER, GROQ_MODEL_FOR_AI_INTERVIEWER
+    global GEMINI_MODEL, GEMINI_MODEL_FOR_AI_INTERVIEWER, GROQ_MODEL, GROQ_MODEL_FOR_JOB_DESCRIPTION
     global AWS_REGION, AWS_ACCESS_KEY, AWS_SECRET_KEY
     global INFOSPOKE_S3_BUCKET_NAME, SQS_ANALYZE_IMAGE_QUEUE_URL, HOST
     global MAX_QUESTION_TIME
@@ -89,8 +117,11 @@ def _apply_interview_configs():
     GEMINI_MODEL_FOR_AI_INTERVIEWER = cache.get(
         "GEMINI_MODEL_FOR_AI_INTERVIEWER", GEMINI_MODEL_FOR_AI_INTERVIEWER
     )
-    GROQ_MODEL_FOR_AI_INTERVIEWER = cache.get(
-        "GROQ_MODEL_FOR_AI_INTERVIEWER", GROQ_MODEL_FOR_AI_INTERVIEWER
+    GROQ_MODEL = cache.get(
+        "GROQ_MODEL", GROQ_MODEL
+    )
+    GROQ_MODEL_FOR_JOB_DESCRIPTION = cache.get(
+        "GROQ_MODEL_FOR_JOB_DESCRIPTION", GROQ_MODEL_FOR_JOB_DESCRIPTION
     )
     AWS_REGION = cache.get("AWS_REGION", AWS_REGION)
     AWS_ACCESS_KEY = cache.get("AWS_ACCESS_KEY", AWS_ACCESS_KEY)
@@ -254,9 +285,10 @@ DATABASE_URL = ENVIRONMENTS_DATA.get(ENVIRONMENT, {}).get("DATABASE_URL")
 GOOGLE_API_KEY: str = None
 GROQ_API_KEY: str = None
 WHISPER_MODEL_NAME: str = None
-GEMINI_MODEL: str = "gemma-3-27b-it"
-GEMINI_MODEL_FOR_AI_INTERVIEWER: str = "gemma-3-27b-it"
-GROQ_MODEL_FOR_AI_INTERVIEWER: str = "llama-3.3-70b-versatile"
+GEMINI_MODEL: str = COMMON_CONFIG.get("gemini_model", "gemma-3-27b-it")
+GEMINI_MODEL_FOR_AI_INTERVIEWER: str = COMMON_CONFIG.get("gemini_model_for_ai_interviewer", "gemma-3-27b-it")
+GROQ_MODEL: str = COMMON_CONFIG.get("groq_model", COMMON_CONFIG.get("groq_model_for_ai_interviewer", "llama-3.3-70b-versatile"))
+GROQ_MODEL_FOR_JOB_DESCRIPTION: str = COMMON_CONFIG.get("groq_model_for_job_description", "llama-3.1-8b-instant")
 AWS_REGION: str = None
 AWS_ACCESS_KEY: str = None
 AWS_SECRET_KEY: str = None

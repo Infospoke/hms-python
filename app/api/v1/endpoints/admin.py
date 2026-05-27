@@ -21,7 +21,7 @@ from app.schemas import (
     JobDescriptionRevision,
     JobDescriptionRevisionsResponse,
 )
-from app.utils.gemini_llm import call_llm
+from app.utils.groq_api import call_llm
 from app.utils.requirements_helper import (
     build_certifications_prompt,
     build_languages_prompt,
@@ -208,7 +208,7 @@ async def generate_job_description(
 
             result = await generator.rewrite_job_description(
                 old_job_description=data.old_job_description,
-                update_parameter=data.update_parameter,
+                update_parameter=data.update_parameter
             )
             if result.get("success"):
                 rewritten_text = result.get("rewritten_job_description", "")
@@ -246,7 +246,7 @@ async def generate_job_description(
             travel_requirement=data.travel_requirement,
             years_of_experience=data.years_of_experience,
             required_certifications=data.required_certifications,
-            languages=data.languages,
+            languages=data.languages
         )
 
         if result.get("success"):
@@ -338,22 +338,47 @@ async def generate_job_description(
 
 @router.post("/ctc-review", response_model=CTCReviewResponse)
 async def ctc_review(req: CTCReviewRequest):
-    benchmarks = await fetch_salary_benchmarks(
-        job_title=req.job_title,
-        location=req.location,
-        employment_type=req.employment_type,
-        seniority=req.seniority,
-    )
+    try:
+        benchmarks = await fetch_salary_benchmarks(
+            job_title=req.job_title,
+            location=req.location,
+            employment_type=req.employment_type,
+            seniority=req.seniority,
+        )
+    except Exception as e:
+        logger.warning(f"Live market salary API failed: {e}")
+        benchmarks = []
 
-    # if not benchmarks:
-    #     return CTCReviewResponse(min_salary=0, max_salary=0)
+    if benchmarks and len(benchmarks) > 0:
+        first = benchmarks[0]
+        min_sal = first.min_salary or 300000.0
+        max_sal = first.max_salary or 500000.0
+        return CTCReviewResponse(min_salary=float(min_sal), max_salary=float(max_sal))
 
-    # return CTCReviewResponse(
-    #     min_salary=benchmarks[0].min_salary if benchmarks[0].min_salary else 0,
-    #     max_salary=benchmarks[0].max_salary if benchmarks[0].max_salary else 0,
-    # )
+    # Fallback to ultra-fast Groq model estimation for localized CTC range
+    prompt = f"""You are a recruitment compensation analyst specializing in the Indian tech market.
+Estimate a highly realistic annual salary range (CTC in INR) for the following job profile:
+- Job Title: {req.job_title}
+- Department: {req.department}
+- Seniority: {req.seniority.value}
+- Location: {req.location}
+- Employment Type: {req.employment_type}
 
-    return CTCReviewResponse(min_salary=300000, max_salary=500000)
+Ensure the numbers are realistic for the specified Indian location and seniority level (e.g. 800000 to 1500000).
+Respond with a JSON object in this exact format:
+{{
+  "min_salary": 800000,
+  "max_salary": 1500000
+}}
+"""
+    try:
+        llm_resp = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+        min_sal = float(llm_resp.get("min_salary", 300000))
+        max_sal = float(llm_resp.get("max_salary", 500000))
+        return CTCReviewResponse(min_salary=min_sal, max_salary=max_sal)
+    except Exception as e:
+        logger.error(f"Failed to suggest CTC via LLM: {e}")
+        return CTCReviewResponse(min_salary=300000.0, max_salary=500000.0)
 
 
 @router.post("/certifications-suggestions", response_model=CertificationsResponse)
@@ -361,7 +386,7 @@ async def get_certifications_suggestions(req: JobRequirementsRequest):
     prompt = build_certifications_prompt(req)
 
     try:
-        llm_resp = await call_llm(prompt)
+        llm_resp = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
         return CertificationsResponse(certifications=llm_resp.get("certifications", []))
     except Exception as e:
         logger.error(f"Certifications suggestions failed: {str(e)}")
@@ -376,7 +401,7 @@ async def get_language_suggestions(req: JobRequirementsRequest):
     prompt = build_languages_prompt(req)
 
     try:
-        llm_resp = await call_llm(prompt)
+        llm_resp = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
         return LanguagesResponse(languages=llm_resp.get("languages", []))
     except Exception as e:
         logger.error(f"Language suggestions failed: {str(e)}")
@@ -391,7 +416,7 @@ async def get_qualifications_suggestions(req: JobRequirementsRequest):
     prompt = build_qualifications_prompt(req)
 
     try:
-        llm_resp = await call_llm(prompt)
+        llm_resp = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
         return QualificationsResponse(qualifications=llm_resp.get("qualifications", []))
     except Exception as e:
         logger.error(f"Qualifications suggestions failed: {str(e)}")
