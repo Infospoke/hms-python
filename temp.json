@@ -1,0 +1,37 @@
+{
+    "job_title": "Software Engineer",
+    "job_summary": "We are seeking a Mid-Senior Software Engineer to join our Talent Acquisition technology team in Hyderabad. In this role, you will design, develop, and maintain robust software solutions that streamline and enhance our recruitment and talent management processes. Working in a hybrid environment, you will leverage your expertise in Java and Spring Boot to build scalable applications.",
+    "key_responsibilities": [
+        "Design, develop, and deploy high-quality, scalable, and secure software applications using Java and Spring Boot.",
+        "Collaborate with cross-functional teams, including product managers and talent acquisition specialists, to translate business requirements into technical solutions.",
+        "Optimize database performance by writing efficient SQL queries and designing robust data models.",
+        "Maintain code quality through unit testing, code reviews, and adherence to software development best practices."
+    ],
+    "basic_qualifications": [
+        "Bachelor's degree in Computer Science, Information Technology, or a related field.",
+        "Minimum of 5 years of professional software development experience.",
+        "Strong proficiency in Java, Spring Boot, and relational databases (SQL).",
+        "Excellent communication skills in English, with the ability to collaborate effectively in a hybrid team environment."
+    ],
+    "preferred_qualifications": [
+        "Experience with containerization and orchestration tools such as Docker and Kubernetes.",
+        "Familiarity with building or integrating HR technology, Applicant Tracking Systems (ATS), or recruitment tools.",
+        "Experience working in an Agile/Scrum development environment."
+    ],
+    "skills_must_have": [
+        "Java",
+        "Spring Boot",
+        "SQL"
+    ],
+    "skills_nice_to_have": [
+        "Docker",
+        "Kubernetes"
+    ],
+    "education_requirements": "Bachelor's degree in Computer Science or related field",
+    "experience_requirements": "5 years of professional software engineering experience",
+    "certifications_required": [],
+    "languages_required": "English",
+    "work_mode": "Hybrid",
+    "employment_type": "Full-Time",
+    "location": "Hyderabad"
+}

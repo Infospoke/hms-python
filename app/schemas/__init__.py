@@ -166,7 +166,6 @@ SENIORITY_TO_YEO = {
 
 
 class GenerateJobDescriptionRequest(BaseModel):
-    job_id: Optional[int] = None
     job_title: str = ""
     department: str = ""
     location: str = ""
@@ -190,7 +189,7 @@ class JobDescriptionOutput(BaseModel):
     job_title: str
     job_summary: str
     key_responsibilities: List[str]
-    required_qualifications: List[str]
+    basic_qualifications: List[str]
     preferred_qualifications: List[str]
     skills_must_have: List[str]
     skills_nice_to_have: List[str]
