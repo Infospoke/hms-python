@@ -1,6 +1,7 @@
 import json
 import logging
-from app.utils.gemini_llm import call_llm
+from app.utils.groq_api import call_llm
+from app.core import config as consts
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +46,15 @@ Rules:
 - Only include these fields: skill_title, skill_description
 """
 
-JOB_DESCRIPTION_PROMPT = """You are an expert HR professional and technical writer. Create a comprehensive job description (JD) in JSON format based on the details provided below.
+JOB_DESCRIPTION_PROMPT = """You are an expert HR professional and technical writer. Create a concise, professional job description (JD) in JSON format based on the details provided below.
 
 IMPORTANT: Respond ONLY with valid JSON. No markdown code blocks, no explanations, just pure JSON.
+
+SPEED & CONCISENESS RULES:
+1. Keep the "job_summary" extremely brief and direct (exactly 1-2 short sentences).
+2. Limit "key_responsibilities", "required_qualifications", and "preferred_qualifications" to at most 3 concise, high-impact bullet points each.
+3. Keep the "about_company" section under 20 words.
+4. Do not include any filler text or verbose sentences.
 
 JOB DETAILS:
 - Job Title: {job_title}
@@ -71,7 +78,7 @@ ROLE REQUIREMENTS:
 Provide a professional job description JSON with these fields (fill in appropriate values based on the job details):
 {{
   "job_title": "Job Title",
-  "job_summary": "Brief overview of the role (2-3 sentences)",
+  "job_summary": "Brief overview of the role (1-2 sentences)",
   "key_responsibilities": ["Responsibility 1", "Responsibility 2", "Responsibility 3"],
   "required_qualifications": ["Qualification 1", "Qualification 2", "Qualification 3"],
   "preferred_qualifications": ["Qualification 1", "Qualification 2"],
@@ -109,8 +116,15 @@ class SkillGenerator:
         )
 
         try:
-            result = await call_llm(prompt)
-            skills = result if isinstance(result, list) else []
+            result = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+            skills = []
+            if isinstance(result, list):
+                skills = result
+            elif isinstance(result, dict):
+                for k, v in result.items():
+                    if isinstance(v, list):
+                        skills = v
+                        break
             for skill in skills:
                 skill["is_ai_suggested"] = True
                 skill["is_mandatory"] = True
@@ -132,8 +146,15 @@ class SkillGenerator:
         )
 
         try:
-            result = await call_llm(prompt)
-            skills = result if isinstance(result, list) else []
+            result = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+            skills = []
+            if isinstance(result, list):
+                skills = result
+            elif isinstance(result, dict):
+                for k, v in result.items():
+                    if isinstance(v, list):
+                        skills = v
+                        break
             for skill in skills:
                 skill["is_ai_suggested"] = True
                 skill["is_mandatory"] = False
@@ -204,7 +225,7 @@ class JobDescriptionGenerator:
         )
 
         try:
-            result = await call_llm(prompt)
+            result = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
             logger.info(f"JD generation response success, length: {len(str(result))}")
             logger.info(f"Parsed JD result: {result}")
             return {"success": True, "job_description": result}
@@ -237,7 +258,7 @@ class JobDescriptionGenerator:
         )
 
         try:
-            result = await call_llm(prompt)
+            result = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
             logger.info(f"JD rewrite response success, length: {len(str(result))}")
             return {"success": True, "rewritten_job_description": result.get("rewritten_job_description", "")}
         except Exception as e:
