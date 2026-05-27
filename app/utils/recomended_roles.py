@@ -74,7 +74,7 @@ Provide a professional job description JSON with these fields (fill in appropria
   "job_title": "Job Title",
   "job_summary": "Brief overview of the role (2-3 sentences)",
   "key_responsibilities": ["Responsibility 1", "Responsibility 2", "Responsibility 3"],
-  "required_qualifications": ["Qualification 1", "Qualification 2", "Qualification 3"],
+  "basic_qualifications": ["Qualification 1", "Qualification 2", "Qualification 3"],
   "preferred_qualifications": ["Qualification 1", "Qualification 2"],
   "skills_must_have": ["Skill 1", "Skill 2", "Skill 3"],
   "skills_nice_to_have": ["Skill 1", "Skill 2"],
@@ -82,11 +82,9 @@ Provide a professional job description JSON with these fields (fill in appropria
   "experience_requirements": "Experience requirement",
   "certifications_required": ["Certification 1"],
   "languages_required": "English",
-  "travel_requirement": "Travel requirement",
   "work_mode": "Work mode",
   "employment_type": "Employment type",
   "location": "Location",
-  "about_company": "Brief company description"
 }}
 
 Respond with only the JSON object.
@@ -144,22 +142,35 @@ class SkillGenerator:
             return {"success": False, "error": str(e)}
 
 
-REWRITE_JOB_DESCRIPTION_PROMPT = """You are an expert HR professional and technical writer. Create a rewritten job description (JD) in JSON format based on the old job description and the requested update instruction below.
+REWRITE_JOB_DESCRIPTION_PROMPT = """You are an expert HR professional and technical writer. Create an optimized and rewritten job description (JD) in JSON format based on the old job description and the requested update instruction below.
 
 CRITICAL INSTRUCTIONS:
-1. You MUST use ONLY the content and facts provided in the Old Job Description.
-2. Do NOT hallucinate, invent, or introduce new/wrong data, benefits, tools, or requirements that are not in or directly implied by the Old Job Description.
-3. Be strictly accurate to the provided information.
-4. Perform the rewrite specifically based on this instruction:
+1. You MUST use the content and facts provided in the Old Job Description as the primary source of truth.
+2. Apply the requested update instruction with extreme precision, enhancing only the relevant sections to perfectly match the target parameter (e.g., seniority shift, conciseness, technical depth, or expanded duties).
+3. Do NOT hallucinate, invent, or introduce false facts, company details, or unrealistic requirements.
+4. Ensure the output is a professionally written, modern, and engaging job description.
+5. Perform the rewrite specifically based on this instruction:
    {update_instruction}
-5. You MUST preserve the exact same structure, sections, and headings (such as 'Key Responsibilities:', 'Required Qualifications:', 'Preferred Qualifications:', etc.) of the original Job Description. Do NOT merge the content into a single paragraph or omit any headings. Every heading, bullet point, and metadata field present in the Old Job Description must remain in the rewritten version, with only their content updated according to the instruction.
 
 OLD JOB DESCRIPTION:
 {old_job_description}
 
 IMPORTANT: Respond ONLY with valid JSON. No markdown code blocks, no explanations, just pure JSON in this exact format:
 {{
-  "rewritten_job_description": "The complete rewritten job description text here"
+  "job_title": "Optimized Job Title",
+  "job_summary": "Comprehensive overview of the role (2-3 sentences)",
+  "key_responsibilities": ["Enhanced Responsibility 1", "Enhanced Responsibility 2", "Enhanced Responsibility 3"],
+  "basic_qualifications": ["Qualification 1", "Qualification 2", "Qualification 3"],
+  "preferred_qualifications": ["Qualification 1", "Qualification 2"],
+  "skills_must_have": ["Skill 1", "Skill 2", "Skill 3"],
+  "skills_nice_to_have": ["Skill 1", "Skill 2"],
+  "education_requirements": "Education requirement",
+  "experience_requirements": "Experience requirement",
+  "certifications_required": ["Certification 1"],
+  "languages_required": "English",
+  "work_mode": "Work mode",
+  "employment_type": "Employment type",
+  "location": "Location"
 }}
 """
 
@@ -219,16 +230,16 @@ class JobDescriptionGenerator:
         update_parameter: str,
     ):
         instructions = {
-            "Rewrite for Senior level": "Adjust the tone, expectations, and framing of tasks to reflect a senior professional (e.g., mentorship, leadership, higher ownership, strategic impact) without adding new technical skills or qualifications not present in the original description.",
-            "Rewrite for Junior Level": "Adjust the tone and expectations to reflect a junior/entry-level professional (e.g., support, learning, working under guidance, execution of tasks) without adding new qualifications.",
-            "Make Concise": "Condense the information, remove redundancy, and make it shorter and more direct while preserving all essential details.",
-            "Make more Technical": "Frame the responsibilities and skills in a more technical, professional, and precise language, highlighting the technical aspects of the tasks already described without inventing new skills or tools.",
-            "Expand Responsibilities": "Elaborate on the existing responsibilities in the old job description, explaining them in more detail without adding entirely new or unrelated duties."
+            "rewrite for senior level": "Adjust the tone, expectations, and framing of tasks to reflect a senior professional (e.g., mentorship, leadership, higher ownership, strategic impact) without adding new technical skills or qualifications not present in the original description.",
+            "rewrite for junior level": "Adjust the tone and expectations to reflect a junior/entry-level professional (e.g., support, learning, working under guidance, execution of tasks) without adding new qualifications.",
+            "make concise": "Condense the information, remove redundancy, and make it shorter and more direct while preserving all essential details.",
+            "make more technical": "Frame the responsibilities and skills in a more technical, professional, and precise language, highlighting the technical aspects of the tasks already described without inventing new skills or tools.",
+            "expand responsibilities": "Elaborate on the existing responsibilities in the old job description, explaining them in more detail without adding entirely new or unrelated duties."
         }
 
         # Default fallback instruction if no exact match is found
         instruction = instructions.get(
-            update_parameter,
+            update_parameter.lower(),
             f"Rewrite the job description to align with: {update_parameter}"
         )
 
@@ -240,7 +251,7 @@ class JobDescriptionGenerator:
         try:
             result = asyncio.run(call_llm(prompt))
             logger.info(f"JD rewrite response success, length: {len(str(result))}")
-            return {"success": True, "rewritten_job_description": result.get("rewritten_job_description", "")}
+            return {"success": True, "job_description": result}
         except Exception as e:
             logger.error(f"JD rewrite failed: {e}")
             return {"success": False, "error": str(e)}

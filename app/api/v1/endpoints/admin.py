@@ -1,16 +1,13 @@
 import logging
 import traceback
 from fastapi import APIRouter, HTTPException, status, Response
+from fastapi.responses import JSONResponse
 from app.core import config as consts
 from app.schemas import (
     AISuggestSkillsRequest,
     AISuggestSkillsResponse,
     SkillRequirement,
     GenerateJobDescriptionRequest,
-)
-from app.utils.recomended_roles import SkillGenerator, JobDescriptionGenerator
-from app.utils.ctc_validation_helper import fetch_salary_benchmarks
-from app.schemas import (
     CTCReviewRequest,
     CTCReviewResponse,
     JobRequirementsRequest,
@@ -18,9 +15,10 @@ from app.schemas import (
     LanguagesResponse,
     QualificationsResponse,
     CandidateRejectedRequest,
-    JobDescriptionRevision,
-    JobDescriptionRevisionsResponse,
 )
+from app.utils.recomended_roles import SkillGenerator, JobDescriptionGenerator
+from app.utils.ctc_validation_helper import fetch_salary_benchmarks
+
 from app.utils.gemini_llm import call_llm
 from app.utils.requirements_helper import (
     build_certifications_prompt,
@@ -144,66 +142,19 @@ def generate_job_description(
 ):
     """Generate or rewrite a comprehensive job description using AI based on details or an old JD."""
     try:
-        def store_job_description_revision(
-            job_id: int,
-            job_description: str,
-            update_parameter=None,
-        ):
-            existing_revisions = session.exec(
-                select(models.JobDescriptionRevisions)
-                .where(models.JobDescriptionRevisions.job_id == job_id)
-                .order_by(models.JobDescriptionRevisions.revision_index)
-            ).all()
-
-            next_revision_index = 1
-            replaced_jd_index = None
-            if existing_revisions:
-                next_revision_index = existing_revisions[-1].revision_index + 1
-
-            if len(existing_revisions) >= 3:
-                revisions_to_remove = existing_revisions[: len(existing_revisions) - 2]
-                replaced_jd_index = revisions_to_remove[0].revision_index
-                for revision in revisions_to_remove:
-                    session.delete(revision)
-
-            session.add(
-                models.JobDescriptionRevisions(
-                    job_id=job_id,
-                    revision_index=next_revision_index,
-                    job_description=job_description,
-                    update_parameter=update_parameter,
-                )
-            )
-            session.commit()
-            return next_revision_index, replaced_jd_index
-
         generator = JobDescriptionGenerator()
         if data.old_job_description and data.update_parameter:
             allowed_parameters = {
-                "Rewrite for Senior level",
-                "Rewrite for Junior Level",
-                "Make Concise",
-                "Make more Technical",
-                "Expand Responsibilities",
+                "rewrite for senior level",
+                "rewrite for junior level",
+                "make concise",
+                "make more technical",
+                "expand responsibilities",
             }
-            if data.update_parameter not in allowed_parameters:
+            if data.update_parameter.lower() not in allowed_parameters:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid update_parameter.",
-                )
-            if not data.job_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="job_id is required for rewrite requests.",
-                )
-
-            job = session.exec(
-                select(models.Jobs).where(models.Jobs.job_id == data.job_id)
-            ).first()
-            if not job:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Job not found for job_id {data.job_id}.",
                 )
 
             result = generator.rewrite_job_description(
@@ -211,20 +162,8 @@ def generate_job_description(
                 update_parameter=data.update_parameter,
             )
             if result.get("success"):
-                rewritten_text = result.get("rewritten_job_description", "")
-                word_count = len(rewritten_text.split())
-                next_revision_index, replaced_jd_index = store_job_description_revision(
-                    job_id=data.job_id,
-                    job_description=rewritten_text,
-                    update_parameter=data.update_parameter,
-                )
-
-                return {
-                    "job_description": rewritten_text,
-                    "word_count": word_count,
-                    "revision_index": next_revision_index,
-                    "replaced_jd_index": replaced_jd_index,
-                }
+                rewritten_jd = result.get("job_description", {})
+                return JSONResponse(content=rewritten_jd)
             else:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -251,75 +190,7 @@ def generate_job_description(
 
         if result.get("success"):
             jd_data = result.get("job_description", {})
-
-            # Generate formatted text string
-            job_summary = jd_data.get("job_summary", "")
-            key_responsibilities = jd_data.get("key_responsibilities", [])
-            required_qualifications = jd_data.get("required_qualifications", [])
-            preferred_qualifications = jd_data.get("preferred_qualifications", [])
-            skills_must_have = jd_data.get("skills_must_have", [])
-            skills_nice_to_have = jd_data.get("skills_nice_to_have", [])
-            education_requirements = jd_data.get("education_requirements", "")
-            experience_requirements = jd_data.get("experience_requirements", "")
-            languages_required = jd_data.get("languages_required", "")
-            travel_requirement = jd_data.get("travel_requirement", "")
-            work_mode = jd_data.get("work_mode", "")
-            employment_type = jd_data.get("employment_type", "")
-            location = jd_data.get("location", "")
-            about_company = jd_data.get("about_company", "")
-
-            # Build text string
-            text_parts = [job_summary, ""]
-            text_parts.append("Key Responsibilities:")
-            text_parts.extend([f"- {resp}" for resp in key_responsibilities])
-            text_parts.append("")
-            text_parts.append("Required Qualifications:")
-            text_parts.extend([f"- {qual}" for qual in required_qualifications])
-            text_parts.append("")
-            if preferred_qualifications:
-                text_parts.append("Preferred Qualifications:")
-                text_parts.extend([f"- {qual}" for qual in preferred_qualifications])
-                text_parts.append("")
-            text_parts.append(f"Must-Have Skills: {', '.join(skills_must_have)}")
-            text_parts.append(f"Nice-to-Have Skills: {', '.join(skills_nice_to_have)}")
-            text_parts.append(f"Education Requirements: {education_requirements}")
-            text_parts.append(f"Experience Requirements: {experience_requirements}")
-            text_parts.append(f"Languages Required: {languages_required}")
-            text_parts.append(f"Travel Requirement: {travel_requirement}")
-            text_parts.append(f"Work Mode: {work_mode}")
-            text_parts.append(f"Employment Type: {employment_type}")
-            text_parts.append(f"Location: {location}")
-            text_parts.append(f"About Company: {about_company}")
-
-            job_description_text = "\n".join(text_parts)
-            word_count = len(job_description_text.split())
-
-            if not data.job_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="job_id is required for generate requests.",
-                )
-
-            job = session.exec(
-                select(models.Jobs).where(models.Jobs.job_id == data.job_id)
-            ).first()
-            if not job:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Job not found for job_id {data.job_id}.",
-                )
-
-            next_revision_index, replaced_jd_index = store_job_description_revision(
-                job_id=data.job_id,
-                job_description=job_description_text,
-            )
-
-            return {
-                "job_description": job_description_text,
-                "word_count": word_count,
-                "revision_index": next_revision_index,
-                "replaced_jd_index": replaced_jd_index,
-            }
+            return JSONResponse(content=jd_data)
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -427,38 +298,3 @@ def candidate_rejected(
             status_code=500, detail="Failed to update candidate rejected status"
         )
 
-
-@router.get("/jobs/{job_id}/revisions", response_model=JobDescriptionRevisionsResponse)
-def get_job_description_revisions(
-    job_id: int,
-    session: Session = Depends(get_session),
-):
-    try:
-        rows = session.exec(
-            select(models.JobDescriptionRevisions)
-            .where(models.JobDescriptionRevisions.job_id == job_id)
-            .order_by(models.JobDescriptionRevisions.revision_index)
-        ).all()
-
-        revisions = [
-            JobDescriptionRevision(
-                id=r.id,
-                job_id=r.job_id,
-                revision_index=r.revision_index,
-                job_description=r.job_description,
-                update_parameter=r.update_parameter,
-                created_at=r.created_at,
-            )
-            for r in rows
-        ]
-
-        return JobDescriptionRevisionsResponse(
-            job_id=job_id, revisions=revisions, total_revisions=len(revisions)
-        )
-    except Exception as e:
-        logger.error(f"Error fetching JD revisions for job_id={job_id}: {e}")
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch job description revisions",
-        )
