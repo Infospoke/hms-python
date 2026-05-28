@@ -179,7 +179,7 @@ class GenerateJobDescriptionRequest(BaseModel):
     education_requirements: str = ""
     travel_requirement: str = ""
     years_of_experience: str = ""
-    required_certifications: List[str] = []
+    required_certifications: str = ""
     languages: str = "English"
     old_job_description: Optional[str] = ""
     update_parameter: Optional[str] = ""
