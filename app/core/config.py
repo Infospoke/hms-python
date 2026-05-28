@@ -42,32 +42,7 @@ def _load_interview_configs():
                 for config in interview_configurations
             }
             
-            # Proactively self-seed missing configurations to make deployment frictionless
-            if "GROQ_MODEL" not in _INTERVIEW_CONFIGS_CACHE:
-                try:
-                    new_config = models.InterviewConfiguration(
-                        configuration_name="GROQ_MODEL",
-                        configuration_value=GROQ_MODEL
-                    )
-                    session.add(new_config)
-                    session.commit()
-                    _INTERVIEW_CONFIGS_CACHE["GROQ_MODEL"] = GROQ_MODEL
-                    logger.info("Successfully seeded 'GROQ_MODEL' in database table.")
-                except Exception as seed_err:
-                    logger.error(f"Error seeding GROQ_MODEL: {seed_err}")
 
-            if "GROQ_MODEL_FOR_JOB_DESCRIPTION" not in _INTERVIEW_CONFIGS_CACHE:
-                try:
-                    new_config = models.InterviewConfiguration(
-                        configuration_name="GROQ_MODEL_FOR_JOB_DESCRIPTION",
-                        configuration_value=GROQ_MODEL_FOR_JOB_DESCRIPTION
-                    )
-                    session.add(new_config)
-                    session.commit()
-                    _INTERVIEW_CONFIGS_CACHE["GROQ_MODEL_FOR_JOB_DESCRIPTION"] = GROQ_MODEL_FOR_JOB_DESCRIPTION
-                    logger.info("Successfully seeded 'GROQ_MODEL_FOR_JOB_DESCRIPTION' in database table.")
-                except Exception as seed_err:
-                    logger.error(f"Error seeding GROQ_MODEL_FOR_JOB_DESCRIPTION: {seed_err}")
 
         logger.debug(
             f"Interview configs loaded from DB: {list(_INTERVIEW_CONFIGS_CACHE.keys())}"
