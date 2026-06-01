@@ -489,6 +489,7 @@ class ResumeAnalyzer:
                 ),
             },
             "summary": result.get("summary", ""),
+            "analysis": result.get("analysis", {}),
         }
         return web_result
 

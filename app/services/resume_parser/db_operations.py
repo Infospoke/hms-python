@@ -62,6 +62,13 @@ def create_or_update_json_analysis_db(
     resume_analysis = create_or_update_resume_analysis_db(
         session, application_id, result, analysis_success
     )
+    if analysis_success:
+        try:
+            create_or_update_resume_analysis_update_db(
+                session, application_id, result
+            )
+        except Exception as e:
+            logger.error(f"Failed to save detailed resume analysis update to DB: {e}")
     return resume_attributes
 
 
@@ -437,3 +444,127 @@ def log_resume_activity(
         session.commit()
     except Exception as e:
         logger.error(f"Failed to create resume log for app {application_id}: {e}")
+
+
+def create_or_update_resume_analysis_update_db(
+    session: Session, application_id: int, result: Dict
+) -> Optional[models.ResumeAnalysisUpdate]:
+    try:
+        job_application = get_job_application_by_id(session, application_id)
+        if not job_application:
+            logger.error(
+                f"Could not find JobApplications record with ID {application_id}"
+            )
+            return None
+        
+        statement = select(models.ResumeAnalysisUpdate).where(
+            models.ResumeAnalysisUpdate.application_id == job_application.id
+        )
+        resume_analysis_update = session.exec(statement).first()
+        
+        # Extract details with safe fallback defaults from nested analysis dictionary
+        analysis = result.get("analysis", {})
+        
+        def clean_val(val):
+            if val is None:
+                return "Not Mentioned"
+            if isinstance(val, str):
+                s = val.strip()
+                if not s or s.lower() in ["", "none", "null", "unknown", "na", "n/a", "not found", "no name found", "no email found"]:
+                    return "Not Mentioned"
+                return s
+            return str(val)
+        
+        name = clean_val(result.get("name") or analysis.get("name") or result.get("candidate_name") or analysis.get("candidate_name"))
+        designation = clean_val(result.get("designation") or analysis.get("designation") or result.get("current_role") or analysis.get("current_role"))
+        current_location = clean_val(result.get("current_location") or analysis.get("current_location") or result.get("location") or analysis.get("location"))
+        total_experience = clean_val(result.get("total_experience") or analysis.get("total_experience") or result.get("relevant_experience_years") or analysis.get("relevant_experience_years"))
+        email = clean_val(result.get("email") or analysis.get("email"))
+        notice_period = clean_val(result.get("notice_period") or analysis.get("notice_period"))
+        phone_no = clean_val(result.get("phone_no") or analysis.get("phone_no") or result.get("contact_number") or analysis.get("contact_number") or result.get("phone_fields") or result.get("phone") or analysis.get("phone"))
+        current_company = clean_val(result.get("current_company") or analysis.get("current_company"))
+        
+        personal_date_of_birth = clean_val(result.get("personal_date_of_birth") or analysis.get("personal_date_of_birth"))
+        personal_gender = clean_val(result.get("personal_gender") or analysis.get("personal_gender"))
+        personal_nationality = clean_val(result.get("personal_nationality") or analysis.get("personal_nationality"))
+        personal_languages_known = result.get("personal_languages_known") or analysis.get("personal_languages_known") or []
+        personal_address = clean_val(result.get("personal_address") or analysis.get("personal_address"))
+        
+        education_details = result.get("education_details") or analysis.get("education_details") or []
+        experience_details = result.get("experience_details") or analysis.get("experience_details") or []
+        time_line = result.get("time_line") or analysis.get("time_line") or []
+        company_details = result.get("company_details") or analysis.get("company_details") or []
+        list_of_experience = result.get("list_of_experience") or analysis.get("list_of_experience") or []
+        projects = result.get("projects") or analysis.get("projects") or []
+        certifications = result.get("certifications") or analysis.get("certifications") or []
+        
+        # Calculate total projects count
+        total_projects_count = result.get("total_projects_count") or analysis.get("total_projects_count")
+        if total_projects_count is None:
+            total_projects_count = len(projects)
+            
+        if resume_analysis_update:
+            resume_analysis_update.job_id = job_application.job_id
+            resume_analysis_update.name = name
+            resume_analysis_update.designation = designation
+            resume_analysis_update.current_location = current_location
+            resume_analysis_update.total_experience = total_experience
+            resume_analysis_update.email = email
+            resume_analysis_update.notice_period = notice_period
+            resume_analysis_update.phone_no = phone_no
+            resume_analysis_update.current_company = current_company
+            resume_analysis_update.personal_date_of_birth = personal_date_of_birth
+            resume_analysis_update.personal_gender = personal_gender
+            resume_analysis_update.personal_nationality = personal_nationality
+            resume_analysis_update.personal_languages_known = personal_languages_known
+            resume_analysis_update.personal_address = personal_address
+            resume_analysis_update.education_details = education_details
+            resume_analysis_update.experience_details = experience_details
+            resume_analysis_update.time_line = time_line
+            resume_analysis_update.company_details = company_details
+            resume_analysis_update.list_of_experience = list_of_experience
+            resume_analysis_update.projects = projects
+            resume_analysis_update.certifications = certifications
+            resume_analysis_update.total_projects_count = total_projects_count
+            resume_analysis_update.updated_at = get_ist_now()
+            logger.info(f"ResumeAnalysisUpdate updated for application ID {application_id}")
+        else:
+            resume_analysis_update = models.ResumeAnalysisUpdate(
+                application_id=job_application.id,
+                job_id=job_application.job_id,
+                name=name,
+                designation=designation,
+                current_location=current_location,
+                total_experience=total_experience,
+                email=email,
+                notice_period=notice_period,
+                phone_no=phone_no,
+                current_company=current_company,
+                personal_date_of_birth=personal_date_of_birth,
+                personal_gender=personal_gender,
+                personal_nationality=personal_nationality,
+                personal_languages_known=personal_languages_known,
+                personal_address=personal_address,
+                education_details=education_details,
+                experience_details=experience_details,
+                time_line=time_line,
+                company_details=company_details,
+                list_of_experience=list_of_experience,
+                projects=projects,
+                certifications=certifications,
+                total_projects_count=total_projects_count
+            )
+            logger.info(f"ResumeAnalysisUpdate created for application ID {application_id}")
+            
+        session.add(resume_analysis_update)
+        session.commit()
+        session.refresh(resume_analysis_update)
+        return resume_analysis_update
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Database error in create_or_update_resume_analysis_update_db: {str(e)}")
+        raise DatabaseQueryException(str(e), "create_or_update_resume_analysis_update_db")
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Unexpected error in create_or_update_resume_analysis_update_db: {str(e)}")
+        raise DatabaseQueryException(str(e), "create_or_update_resume_analysis_update_db")

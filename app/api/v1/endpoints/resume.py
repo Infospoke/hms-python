@@ -142,6 +142,241 @@ def fetch_resume_analysis(
         raise HTTPException(status_code=500, detail=str(e))  # temporary for debugging
 
 
+@router.post("/analysis/update")
+def fetch_resume_analysis_update(
+    application_id: Optional[int] = None,
+    session: Session = Depends(deps.get_session),
+):
+    try:
+        def format_resume_update(item: models.ResumeAnalysisUpdate) -> Dict[str, Any]:
+            res = item.model_dump()
+            for key, value in res.items():
+                if isinstance(value, datetime):
+                    res[key] = timezone_utils.format_datetime_for_api(value)
+            
+            import json
+            
+            # Fetch the associated ResumeAnalysis record for basic stats
+            resume_analysis = session.exec(
+                select(models.ResumeAnalysis).where(
+                    models.ResumeAnalysis.application_id == item.application_id
+                )
+            ).first()
+            
+            # Fetch raw JSON to extract more specific LLM fields
+            resume_attr = session.exec(
+                select(models.ResumeAttributes).where(
+                    models.ResumeAttributes.application_id == item.application_id
+                )
+            ).first()
+            
+            raw_analysis = {}
+            if resume_attr and resume_attr.analysis_json:
+                try:
+                    raw_analysis = json.loads(resume_attr.analysis_json)
+                except Exception:
+                    pass
+            
+            # Extract relevant_experience_years safely
+            relevant_exp_val = (
+                raw_analysis.get("relevant_experience_years")
+                or raw_analysis.get("analysis", {}).get("relevant_experience_years")
+            )
+            
+            # Extract total_jobs_count safely
+            total_jobs_val = (
+                raw_analysis.get("total_jobs_count")
+                or raw_analysis.get("analysis", {}).get("total_jobs_count")
+                or (resume_analysis.total_jobs_count if resume_analysis else None)
+            )
+            
+            # Extract average tenure safely
+            average_tenure_val = (
+                raw_analysis.get("average_job_change")
+                or raw_analysis.get("job_analysis", {}).get("average_job_change")
+                or (resume_analysis.average_job_change if resume_analysis else None)
+            )
+            
+            relevant_exp_str = "Not Mentioned"
+            if relevant_exp_val is not None:
+                try:
+                    relevant_exp_str = f"{int(float(relevant_exp_val))} Year(s)"
+                except Exception:
+                    relevant_exp_str = str(relevant_exp_val)
+                    
+            companies_worked_str = "Not Mentioned"
+            if total_jobs_val is not None:
+                companies_worked_str = str(total_jobs_val)
+                
+            average_tenure_str = "Not Mentioned"
+            if average_tenure_val:
+                average_tenure_str = str(average_tenure_val)
+
+            total_exp_str = res.get("total_experience") or "Not Mentioned"
+            
+            def clean_description(desc):
+                if not desc:
+                    return ""
+                if isinstance(desc, list):
+                    desc = "\n".join([str(d) for d in desc])
+                if isinstance(desc, str):
+                    # Clean up encoding issue like â€¢ and normal bullet signs
+                    cleaned = desc.replace("â€¢", "•")
+                    lines = []
+                    for line in cleaned.split("\n"):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        if not line.startswith("•") and not line.startswith("-") and not line.startswith("*"):
+                            line = "• " + line
+                        elif line.startswith("-") or line.startswith("*"):
+                            line = "•" + line[1:]
+                        lines.append(line)
+                    return "\n".join(lines)
+                return str(desc)
+
+            def get_description_bullets(desc):
+                if not desc:
+                    return []
+                if isinstance(desc, list):
+                    return [str(d).strip().lstrip("•-* ").strip() for d in desc if str(d).strip()]
+                if isinstance(desc, str):
+                    cleaned = desc.replace("â€¢", "•")
+                    bullets = []
+                    for line in cleaned.split("\n"):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        # Strip bullet symbols to return pure text
+                        for sym in ["•", "-", "*"]:
+                            if line.startswith(sym):
+                                line = line[len(sym):].strip()
+                        if line:
+                            bullets.append(line)
+                    return bullets
+                return [str(desc)]
+
+            def format_percentage(val):
+                if not val:
+                    return "Not Mentioned"
+                import re
+                val_str = str(val).strip()
+                if val_str.lower() in ["", "none", "null", "unknown", "na", "n/a", "not mentioned"]:
+                    return "Not Mentioned"
+                match = re.match(r'^([0-9]+(?:\.[0-9]+)?)\s*(?:cgpa|gpa)?$', val_str, re.IGNORECASE)
+                if match:
+                    num = float(match.group(1))
+                    if num <= 10.0:
+                        return f"{match.group(1)}/10"
+                cleaned = re.sub(r'\s*(?:cgpa|gpa)\s*', '', val_str, flags=re.IGNORECASE).strip()
+                if re.match(r'^[0-9]+(?:\.[0-9]+)?\s*/\s*[0-9]+(?:\.[0-9]+)?$', cleaned):
+                    return cleaned.replace(" ", "")
+                return val_str
+
+            formatted_jobs = []
+            for job in (res.get("experience_details") or []):
+                if isinstance(job, dict):
+                    formatted_jobs.append({
+                        "job_title": job.get("job_title"),
+                        "company": job.get("company"),
+                        "start_date": job.get("start_date"),
+                        "end_date": job.get("end_date"),
+                        "description": get_description_bullets(job.get("description"))
+                    })
+
+            formatted_projects = []
+            for proj in (res.get("projects") or []):
+                if isinstance(proj, dict):
+                    formatted_projects.append({
+                        "project_title": proj.get("project_title"),
+                        "description": get_description_bullets(proj.get("description")),
+                        "tech_stack": proj.get("tech_stack") or [],
+                        "start_date": proj.get("start_date"),
+                        "end_date": proj.get("end_date")
+                    })
+                elif isinstance(proj, str):
+                    formatted_projects.append({
+                        "project_title": proj,
+                        "description": [],
+                        "tech_stack": [],
+                        "start_date": "",
+                        "end_date": ""
+                    })
+
+            formatted_education = []
+            for edu in (res.get("education_details") or []):
+                if isinstance(edu, dict):
+                    formatted_education.append({
+                        "degree": edu.get("degree"),
+                        "institution": edu.get("institution"),
+                        "field_of_study": edu.get("field_of_study"),
+                        "start_year": edu.get("start_year"),
+                        "end_year": edu.get("end_year"),
+                        "percentage": format_percentage(edu.get("percentage"))
+                    })
+
+            return {
+                "id": res.get("id"),
+                "application_id": res.get("application_id"),
+                "job_id": res.get("job_id"),
+                "name": res.get("name"),
+                "designation": res.get("designation"),
+                "current_location": res.get("current_location"),
+                "email": res.get("email"),
+                "notice_period": res.get("notice_period"),
+                "phone_no": res.get("phone_no"),
+                "current_company": res.get("current_company"),
+                "personal_details": {
+                    "personal_date_of_birth": res.get("personal_date_of_birth"),
+                    "personal_gender": res.get("personal_gender"),
+                    "personal_nationality": res.get("personal_nationality"),
+                    "personal_languages_known": res.get("personal_languages_known") or [],
+                    "personal_address": res.get("personal_address")
+                },
+                "education": formatted_education,
+                "experience": {
+                    "total_experience": total_exp_str,
+                    "relevant_experience": relevant_exp_str,
+                    "companies_worked": companies_worked_str,
+                    "average_tenure": average_tenure_str,
+                    "experience_details": formatted_jobs,
+                    "time_line": res.get("time_line") or [],
+                    "company_details": res.get("company_details") or [],
+                    "list_of_experience": res.get("list_of_experience") or []
+                },
+                "projects": {
+                    "total_projects_count": len(formatted_projects),
+                    "project_details": formatted_projects
+                },
+                "certifications": res.get("certifications") or [],
+                "created_at": res.get("created_at"),
+                "updated_at": res.get("updated_at"),
+                "is_deleted": res.get("is_deleted", False)
+            }
+
+        if application_id is not None:
+            resume_update = session.exec(
+                select(models.ResumeAnalysisUpdate).where(
+                    models.ResumeAnalysisUpdate.application_id == application_id
+                )
+            ).first()
+            if resume_update:
+                formatted_data = format_resume_update(resume_update)
+                return {"success": True, "data": formatted_data}
+            else:
+                return {"success": False, "message": "No detailed resume analysis update found for this application ID."}
+        else:
+            resume_updates = session.exec(select(models.ResumeAnalysisUpdate)).all()
+            res_list = [format_resume_update(item) for item in resume_updates]
+            return {"success": True, "data": res_list}
+    except SQLAlchemyError as e:
+        print("ERROR:", repr(e))
+        raise HTTPException(status_code=500, detail="Database operation failed")
+    except Exception as e:
+        print("🔥 ERROR:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def add_interview_details(results_db, session):
     updated_results = []
 
