@@ -51,10 +51,11 @@ JOB_DESCRIPTION_PROMPT = """You are an expert HR professional and technical writ
 IMPORTANT: Respond ONLY with valid JSON. No markdown code blocks, no explanations, just pure JSON.
 
 SPEED & CONCISENESS RULES:
-1. Keep the "job_summary" extremely brief and direct (exactly 1-2 short sentences).
+1. Provide a comprehensive, detailed, and professional "job_summary" (around 4-6 sentences or 1-2 detailed paragraphs) that captures the core essence, strategic impact, and key opportunities of the role.
 2. Limit "key_responsibilities", "required_qualifications", and "preferred_qualifications" to at most 3 concise, high-impact bullet points each.
 3. Keep the "about_company" section under 20 words.
 4. Do not include any filler text or verbose sentences.
+5. Crucial: The "experience_requirements" field in the output JSON MUST exactly match the provided "Years of Experience" value ({years_of_experience}). Do not change, rewrite, or modify this value in any way.
 
 JOB DETAILS:
 - Job Title: {job_title}
@@ -78,15 +79,15 @@ ROLE REQUIREMENTS:
 Provide a professional job description JSON with these fields (fill in appropriate values based on the job details):
 {{
   "job_title": "Job Title",
-  "job_summary": "Brief overview of the role (1-2 sentences)",
+  "job_summary": "Comprehensive overview of the role, its strategic importance, and key growth opportunities (4-6 sentences or 1-2 detailed paragraphs)",
   "key_responsibilities": ["Responsibility 1", "Responsibility 2", "Responsibility 3"],
   "basic_qualifications": ["Qualification 1", "Qualification 2", "Qualification 3"],
   "preferred_qualifications": ["Qualification 1", "Qualification 2"],
   "skills_must_have": ["Skill 1", "Skill 2", "Skill 3"],
   "skills_nice_to_have": ["Skill 1", "Skill 2"],
   "education_requirements": "Education requirement",
-  "experience_requirements": "Experience requirement",
-  "certifications_required": ["Certification 1", "Certification 2"],
+  "experience_requirements": "{years_of_experience}",
+  "certifications_required": ["Certification 1"],
   "languages_required": "English",
   "work_mode": "Work mode",
   "employment_type": "Employment type",
@@ -171,6 +172,7 @@ CRITICAL INSTRUCTIONS:
 4. Ensure the output is a professionally written, modern, and engaging job description.
 5. Perform the rewrite specifically based on this instruction:
    {update_instruction}
+6. Crucial: The "experience_requirements" field in the output JSON MUST exactly match the provided "experience_requirements value in the old job description. Do not change, rewrite, or modify this value in any way.
 
 OLD JOB DESCRIPTION:
 {old_job_description}
