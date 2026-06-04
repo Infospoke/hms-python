@@ -104,3 +104,14 @@ class InterviewConfiguration(SQLModel, table=(True)):
     id: Optional[int] = Field(default=None, primary_key=True)
     configuration_name: str = Field(max_length=255)
     configuration_value: str = Field(max_length=255)
+
+
+class AIInterviewQuestions(SQLModel, table=(True)):
+    __tablename__ = "tb_ai_interview_questions"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    application_id: int = Field(foreign_key="tb_job_applications.id")
+    number_of_questions: int
+    difficulty_level: str = Field(max_length=50)
+    question_type: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    questions: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)

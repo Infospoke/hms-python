@@ -124,6 +124,7 @@ def create_interview_session(
             )
             session.commit()
 
+
         analysis_columns = [
             c["name"]
             for c in inspector.get_columns(models.InterviewAnalysis.__tablename__)
@@ -380,6 +381,7 @@ def admin_schedule_interview(
                 )
             )
             session.commit()
+
 
         if "interview_started_datetime" not in analysis_columns:
             session.execute(
@@ -944,50 +946,90 @@ def start_interview_generation(interview_session_id: str, session: Session):
     ).first()
 
     structured_questions = []
-    if question_type == "CUSTOM":
-        logger.info(f"Fetching custom questions for job {job_details.job_id}")
-        structured_questions = get_custom_questions(session, job_details.job_id)
 
-        if len(structured_questions) < 5:
-            logger.warning(
-                f"No custom questions found for job {job_details.job_id}. Falling back to AI."
-            )
-            question_type = "AI"
-
-    if question_type == "AI":
-        resume_analysis = session.exec(
-            select(models.ResumeAnalysis).where(
-                models.ResumeAnalysis.application_id == interview_session.application_id
-            )
-        ).first()
-
-        resume_parser = S3ResumeParser()
-        resume_text = resume_parser.extract_text(resume_analysis.file_path)
-
-        job_description = utils.construct_job_description_for_llm(
-            job_title=db_operations.get_job_title(session, job_details.job_id),
-            job_info=job.job_info,
-            job_description=job_details.job_description,
-            job_requirements=job_details.job_requirements,
-            qualification=job_details.qualification,
-            skills=job_details.skills,
+    # 1. Try to fetch from tb_ai_interview_questions first
+    ai_questions = session.exec(
+        select(models.AIInterviewQuestions).where(
+            models.AIInterviewQuestions.application_id == interview_session.application_id
         )
+    ).first()
 
-        technial_interviewer = AIInterviewer(
-            job_role=db_operations.get_job_title(session, job_details.job_id),
-            job_description=job_description,
-            experience=resume_analysis.experience_level,
-            skills=job_details.skills,
-            topics=resume_analysis.interview_focus_areas,
-            resume_text=resume_text,
-        )
+    if ai_questions and ai_questions.questions:
+        logger.info(f"Using pre-existing questions from tb_ai_interview_questions for application {interview_session.application_id}")
+        structured_questions = ai_questions.questions
+    elif interview_analysis and interview_analysis.questions:
+        logger.info(f"Using pre-existing questions from tb_interview_analysis for application {interview_session.application_id}")
+        structured_questions = interview_analysis.questions
 
-        questions = technial_interviewer.generate_questions()
+    # 2. If no questions exist, generate them
+    if not structured_questions:
+        if question_type == "CUSTOM":
+            logger.info(f"Fetching custom questions for job {job_details.job_id}")
+            structured_questions = get_custom_questions(session, job_details.job_id)
 
-        structured_questions = [
-            {"id": idx + 1, "question": question}
-            for idx, question in enumerate(questions)
-        ]
+            if len(structured_questions) < 5:
+                logger.warning(
+                    f"No custom questions found for job {job_details.job_id}. Falling back to AI."
+                )
+                question_type = "AI"
+
+        if question_type == "AI":
+            resume_analysis = session.exec(
+                select(models.ResumeAnalysis).where(
+                    models.ResumeAnalysis.application_id == interview_session.application_id
+                )
+            ).first()
+
+            resume_parser = S3ResumeParser()
+            resume_text_response = resume_parser.extract_text(resume_analysis.file_path)
+            if isinstance(resume_text_response, dict):
+                resume_text = resume_text_response.get("text", "") or "No resume text available."
+            else:
+                resume_text = resume_text_response or "No resume text available."
+
+            job_description = utils.construct_job_description_for_llm(
+                job_title=db_operations.get_job_title(session, job_details.job_id),
+                job_info=job.job_info,
+                job_description=job_details.job_description,
+                job_requirements=job_details.job_requirements,
+                qualification=job_details.qualification,
+                skills=job_details.skills,
+            )
+
+            technial_interviewer = AIInterviewer(
+                job_role=db_operations.get_job_title(session, job_details.job_id),
+                job_description=job_description,
+                experience=resume_analysis.experience_level,
+                skills=job_details.skills,
+                topics=resume_analysis.interview_focus_areas,
+                resume_text=resume_text,
+            )
+
+            questions = technial_interviewer.generate_questions()
+
+            structured_questions = []
+            for idx, question in enumerate(questions):
+                structured_questions.append({
+                    "question_id": idx + 1,
+                    "question": question,
+                    "expected_time": "2-3 mins",
+                    "difficulty_level": "medium",
+                    "question_type": "technical"
+                })
+
+            # Save generated questions to tb_ai_interview_questions for persistence
+            if not ai_questions:
+                ai_questions = models.AIInterviewQuestions(
+                    application_id=interview_session.application_id,
+                    number_of_questions=len(structured_questions),
+                    difficulty_level="Medium",
+                    question_type=["technical"],
+                    questions=structured_questions
+                )
+            else:
+                ai_questions.questions = structured_questions
+                ai_questions.number_of_questions = len(structured_questions)
+            session.add(ai_questions)
 
     interview_analysis.questions = structured_questions
     interview_analysis.status = models.StatusEnum.in_progress
@@ -1006,6 +1048,19 @@ def start_interview(
     # _seb: bool = Depends(verify_seb),
 ):
     logger.info(f"start-interview for session {data.interview_session_id}")
+    
+    interview_session = session.exec(
+        select(models.InterviewSessions).where(
+            models.InterviewSessions.interview_session_id == data.interview_session_id
+        )
+    ).first()
+
+    if not interview_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview session not found.",
+        )
+
     response = start_interview_generation(data.interview_session_id, session)
 
     if response.get("error"):
@@ -1356,3 +1411,527 @@ def test_email(
         )
     sent = send_interview_link_email_sync(interview_session, session)
     return {"message": "Email sent triggered successfully", "sent": sent}
+
+
+@router.post("/generate-ai-questions", response_model=GenerateAIQuestionsResponse)
+def generate_ai_questions(
+    data: GenerateAIQuestionsRequest,
+    session: Session = Depends(deps.get_session),
+):
+    logger.info(f"generate-ai-questions for application_id: {data.application_id}")
+    try:
+        resume_analysis = session.exec(
+            select(models.ResumeAnalysis).where(
+                models.ResumeAnalysis.application_id == data.application_id
+            )
+        ).first()
+        if not resume_analysis:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Resume analysis not found for application_id: {data.application_id}",
+            )
+
+        job_application = session.exec(
+            select(models.JobApplications).where(
+                models.JobApplications.id == data.application_id
+            )
+        ).first()
+        if not job_application:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job application not found for application_id: {data.application_id}",
+            )
+
+        job_details = session.exec(
+            select(models.JobDetails).where(
+                models.JobDetails.job_id == job_application.job_id
+            )
+        ).first()
+        if not job_details:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job details not found for job_id: {job_application.job_id}",
+            )
+
+        job = session.exec(
+            select(models.Jobs).where(models.Jobs.job_id == job_details.job_id)
+        ).first()
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job not found for job_id: {job_details.job_id}",
+            )
+
+        resume_parser = S3ResumeParser()
+        resume_text_response = resume_parser.extract_text(resume_analysis.file_path)
+        if isinstance(resume_text_response, dict):
+            resume_text = resume_text_response.get("text", "") or "No resume text available."
+        else:
+            resume_text = resume_text_response or "No resume text available."
+
+        job_description = utils.construct_job_description_for_llm(
+            job_title=db_operations.get_job_title(session, job_details.job_id),
+            job_info=job.job_info,
+            job_description=job_details.job_description,
+            job_requirements=job_details.job_requirements,
+            qualification=job_details.qualification,
+            skills=job_details.skills,
+        )
+
+        technial_interviewer = AIInterviewer(
+            job_role=db_operations.get_job_title(session, job_details.job_id),
+            job_description=job_description,
+            experience=resume_analysis.experience_level,
+            skills=job_details.skills,
+            topics=resume_analysis.interview_focus_areas,
+            resume_text=resume_text,
+        )
+
+        questions_response = technial_interviewer.generate_custom_questions(
+            count=data.number_of_questions,
+            difficulty=data.difficulty_level,
+            question_types=data.question_type,
+        )
+
+        # Save to tb_ai_interview_questions table
+        if questions_response and "questions" in questions_response:
+            ai_questions = session.exec(
+                select(models.AIInterviewQuestions).where(
+                    models.AIInterviewQuestions.application_id == data.application_id
+                )
+            ).first()
+
+        # Save to tb_ai_interview_questions table
+        if questions_response and "questions" in questions_response:
+            ai_questions = session.exec(
+                select(models.AIInterviewQuestions).where(
+                    models.AIInterviewQuestions.application_id == data.application_id
+                )
+            ).first()
+
+            new_questions = questions_response["questions"]
+
+            if ai_questions:
+                existing_questions = list(ai_questions.questions or [])
+                
+                next_id = 1
+                if existing_questions:
+                    ids = [q.get("question_id") or q.get("id") or 0 for q in existing_questions if isinstance(q, dict)]
+                    next_id = max(ids) + 1 if ids else len(existing_questions) + 1
+
+                for idx, q in enumerate(new_questions):
+                    if isinstance(q, dict):
+                        q["question_id"] = next_id + idx
+                        if "difficulty_level" in q:
+                            q["difficulty_level"] = str(q["difficulty_level"]).lower()
+                        if "question_type" in q:
+                            q["question_type"] = str(q["question_type"]).lower()
+                        existing_questions.append(q)
+                    else:
+                        existing_questions.append({
+                            "question_id": next_id + idx,
+                            "question": str(q),
+                            "expected_time": "2-3 mins",
+                            "difficulty_level": data.difficulty_level.lower(),
+                            "question_type": data.question_type[0].lower() if data.question_type else "technical"
+                        })
+
+                ai_questions.number_of_questions = len(existing_questions)
+                ai_questions.questions = existing_questions
+                ai_questions.created_at = timezone_utils.get_ist_now()
+                session.add(ai_questions)
+                
+                questions_response = {
+                    "total_questions": len(existing_questions),
+                    "questions": existing_questions
+                }
+            else:
+                ai_questions = models.AIInterviewQuestions(
+                    application_id=data.application_id,
+                    number_of_questions=data.number_of_questions,
+                    difficulty_level=data.difficulty_level,
+                    question_type=data.question_type,
+                    questions=new_questions
+                )
+                session.add(ai_questions)
+
+            # Sync with tb_interview_analysis if it exists
+            interview_analysis = session.exec(
+                select(models.InterviewAnalysis).where(
+                    models.InterviewAnalysis.application_id == data.application_id
+                )
+            ).first()
+            if interview_analysis:
+                interview_analysis.questions = ai_questions.questions
+                session.add(interview_analysis)
+
+            session.commit()
+            session.refresh(ai_questions)
+
+        return questions_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in generate-ai-questions endpoint: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while generating AI questions.",
+        )
+
+
+@router.get("/generate-ai-questions", response_model=GenerateAIQuestionsResponse)
+def get_generated_ai_questions(
+    application_id: int = Query(...),
+    session: Session = Depends(deps.get_session),
+):
+    logger.info(f"get-generated-ai-questions for application_id: {application_id}")
+    try:
+        ai_questions = session.exec(
+            select(models.AIInterviewQuestions).where(
+                models.AIInterviewQuestions.application_id == application_id
+            )
+        ).first()
+
+        if not ai_questions:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"AI generated questions not found for application_id: {application_id}",
+            )
+
+        returned_questions = []
+        for q in ai_questions.questions:
+            if isinstance(q, dict):
+                returned_questions.append({
+                    "question_id": q.get("question_id") or q.get("id") or 1,
+                    "question": q.get("question") or q.get("question_text") or "",
+                    "expected_time": q.get("expected_time") or "2-3 mins",
+                    "difficulty_level": q.get("difficulty_level") or "medium",
+                    "question_type": q.get("question_type") or "technical"
+                })
+
+        return {
+            "total_questions": len(returned_questions),
+            "questions": returned_questions
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching AI generated questions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while fetching AI questions.",
+        )
+
+
+@router.post("/custom-question", response_model=GenerateAIQuestionsResponse)
+def add_custom_question(
+    data: AddCustomQuestionRequest,
+    session: Session = Depends(deps.get_session),
+):
+    logger.info(f"add-custom-question for application_id: {data.application_id}")
+    try:
+        # Check/create AIInterviewQuestions record
+        ai_questions = session.exec(
+            select(models.AIInterviewQuestions).where(
+                models.AIInterviewQuestions.application_id == data.application_id
+            )
+        ).first()
+
+        if not ai_questions:
+            ai_questions = models.AIInterviewQuestions(
+                application_id=data.application_id,
+                number_of_questions=0,
+                difficulty_level=data.difficulty_level,
+                question_type=[data.question_type] if data.question_type else [],
+                questions=[]
+            )
+            session.add(ai_questions)
+            session.flush()
+
+        # Check if InterviewAnalysis already exists
+        interview_analysis = session.exec(
+            select(models.InterviewAnalysis).where(
+                models.InterviewAnalysis.application_id == data.application_id
+            )
+        ).first()
+
+        if not interview_analysis:
+            # Check if JobApplication exists to get job_id
+            job_app = session.exec(
+                select(models.JobApplications).where(
+                    models.JobApplications.id == data.application_id
+                )
+            ).first()
+            if not job_app:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Job application not found for application_id: {data.application_id}",
+                )
+            
+            # Find or auto-create InterviewSession
+            interview_session = session.exec(
+                select(models.InterviewSessions).where(
+                    models.InterviewSessions.application_id == data.application_id
+                )
+            ).first()
+            if not interview_session:
+                interview_session_id = str(uuid4())
+                interview_session = models.InterviewSessions(
+                    interview_session_id=interview_session_id,
+                    application_id=data.application_id,
+                    question_type="AI",
+                    status=models.InterviewSessionStatusEnum.scheduled,
+                    exam_exit_password="",
+                )
+                session.add(interview_session)
+                session.flush()
+            else:
+                interview_session_id = interview_session.interview_session_id
+
+            interview_analysis = models.InterviewAnalysis(
+                application_id=data.application_id,
+                interview_session_id=interview_session_id,
+                status=models.StatusEnum.not_started,
+                questions=[],
+                job_id=job_app.job_id,
+            )
+            session.add(interview_analysis)
+            session.flush()
+
+        # Add the custom question to the list (use ai_questions list if populated, else interview_analysis list)
+        questions = list(ai_questions.questions or [])
+        if not questions and interview_analysis.questions:
+            questions = list(interview_analysis.questions)
+
+        # Calculate next question_id
+        next_id = 1
+        if questions:
+            ids = [q.get("question_id") or q.get("id") or 0 for q in questions if isinstance(q, dict)]
+            next_id = max(ids) + 1 if ids else len(questions) + 1
+
+        new_q = {
+            "question_id": next_id,
+            "question": data.question,
+            "expected_time": data.expected_time,
+            "difficulty_level": data.difficulty_level.lower(),
+            "question_type": data.question_type.lower(),
+        }
+        questions.append(new_q)
+        
+        # Update and save to both tables
+        ai_questions.questions = questions
+        ai_questions.number_of_questions = len(questions)
+        session.add(ai_questions)
+
+        interview_analysis.questions = questions
+        session.add(interview_analysis)
+
+        session.commit()
+        session.refresh(ai_questions)
+        session.refresh(interview_analysis)
+
+        # Standardize return questions format
+        returned_questions = []
+        for q in ai_questions.questions:
+            if isinstance(q, dict):
+                returned_questions.append({
+                    "question_id": q.get("question_id") or q.get("id") or 1,
+                    "question": q.get("question") or q.get("question_text") or "",
+                    "expected_time": q.get("expected_time") or "2-3 mins",
+                    "difficulty_level": q.get("difficulty_level") or "medium",
+                    "question_type": q.get("question_type") or "technical"
+                })
+
+        return {
+            "total_questions": len(returned_questions),
+            "questions": returned_questions
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding custom question: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to add custom question.",
+        )
+
+
+@router.put("/custom-question")
+def update_custom_question(
+    data: UpdateCustomQuestionRequest,
+    session: Session = Depends(deps.get_session),
+):
+    logger.info(f"update-custom-question for application_id: {data.application_id}, question_id: {data.question_id}")
+    try:
+        # Check AIInterviewQuestions
+        ai_questions = session.exec(
+            select(models.AIInterviewQuestions).where(
+                models.AIInterviewQuestions.application_id == data.application_id
+            )
+        ).first()
+
+        # Check InterviewAnalysis
+        interview_analysis = session.exec(
+            select(models.InterviewAnalysis).where(
+                models.InterviewAnalysis.application_id == data.application_id
+            )
+        ).first()
+
+        if not ai_questions and not interview_analysis:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Interview records not found for application_id: {data.application_id}",
+            )
+
+        # Retrieve current question list
+        questions = []
+        if ai_questions:
+            questions = list(ai_questions.questions or [])
+        elif interview_analysis:
+            questions = list(interview_analysis.questions or [])
+
+        updated = False
+        for idx, q in enumerate(questions):
+            if isinstance(q, dict):
+                q_id = q.get("question_id") or q.get("id")
+                if q_id == data.question_id:
+                    questions[idx] = {
+                        "question_id": data.question_id,
+                        "question": data.question if data.question is not None else q.get("question") or q.get("question_text") or "",
+                        "expected_time": data.expected_time if data.expected_time is not None else q.get("expected_time") or "2-3 mins",
+                        "difficulty_level": (data.difficulty_level.lower() if data.difficulty_level is not None else q.get("difficulty_level") or "medium"),
+                        "question_type": (data.question_type.lower() if data.question_type is not None else q.get("question_type") or "technical")
+                    }
+                    updated = True
+                    break
+        
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Question with id {data.question_id} not found in this interview session.",
+            )
+
+        # Save to tables
+        if ai_questions:
+            ai_questions.questions = questions
+            session.add(ai_questions)
+
+        if interview_analysis:
+            interview_analysis.questions = questions
+            session.add(interview_analysis)
+
+        session.commit()
+
+        return {
+            "status": "success",
+            "message": "Question updated successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating custom question: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update custom question.",
+        )
+
+
+@router.delete("/custom-question")
+def delete_custom_question(
+    data: DeleteCustomQuestionRequest,
+    session: Session = Depends(deps.get_session),
+):
+    logger.info(f"delete-custom-question for application_id: {data.application_id}, question_id: {data.question_id}")
+    try:
+        # Check AIInterviewQuestions
+        ai_questions = session.exec(
+            select(models.AIInterviewQuestions).where(
+                models.AIInterviewQuestions.application_id == data.application_id
+            )
+        ).first()
+
+        # Check InterviewAnalysis
+        interview_analysis = session.exec(
+            select(models.InterviewAnalysis).where(
+                models.InterviewAnalysis.application_id == data.application_id
+            )
+        ).first()
+
+        if not ai_questions and not interview_analysis:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Interview records not found for application_id: {data.application_id}",
+            )
+
+        questions = []
+        if ai_questions:
+            questions = list(ai_questions.questions or [])
+        elif interview_analysis:
+            questions = list(interview_analysis.questions or [])
+
+        initial_length = len(questions)
+        
+        # Filter out the deleted question
+        filtered_questions = []
+        for q in questions:
+            if isinstance(q, dict):
+                q_id = q.get("question_id") or q.get("id")
+                if q_id != data.question_id:
+                    filtered_questions.append(q)
+            else:
+                filtered_questions.append(q)
+
+        if len(filtered_questions) == initial_length:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Question with id {data.question_id} not found in this interview session.",
+            )
+
+        # Re-index the remaining questions
+        reindexed_questions = []
+        for idx, q in enumerate(filtered_questions):
+            if isinstance(q, dict):
+                reindexed_questions.append({
+                    "question_id": idx + 1,
+                    "question": q.get("question") or q.get("question_text") or "",
+                    "expected_time": q.get("expected_time") or "2-3 mins",
+                    "difficulty_level": q.get("difficulty_level") or "medium",
+                    "question_type": q.get("question_type") or "technical"
+                })
+            else:
+                reindexed_questions.append({
+                    "question_id": idx + 1,
+                    "question": str(q),
+                    "expected_time": "2-3 mins",
+                    "difficulty_level": "medium",
+                    "question_type": "technical"
+                })
+
+        # Update and save to both tables
+        if ai_questions:
+            ai_questions.questions = reindexed_questions
+            ai_questions.number_of_questions = len(reindexed_questions)
+            session.add(ai_questions)
+
+        if interview_analysis:
+            interview_analysis.questions = reindexed_questions
+            session.add(interview_analysis)
+
+        session.commit()
+
+        return {
+            "status": "success",
+            "message": "Question deleted successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting custom question: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete custom question.",
+        )
+
+

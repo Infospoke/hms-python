@@ -147,3 +147,112 @@ class AIInterviewer(BaseInterviewer):
             "feedback": "Error analyzing response.",
             "domain_knowledge": 0,
         }
+
+    def generate_custom_questions(self, count: int, difficulty: str, question_types: list) -> dict:
+        prompt = f"""
+You are an expert **Senior Interviewer**.
+Your goal is to generate customized interview questions for the role of **{self.job_role}**.
+
+**Interview Context:**
+- Role: {self.job_role}
+- Job Description (JD):
+{self.job_description}
+
+**Candidate Context:**
+- Experience Level: {self.experience}
+- Key Skills: {self.skills}
+- Resume Summary: "{self.resume_text[:1500]}"
+
+**Task:**
+Generate exactly {count} interview questions.
+- Difficulty Level: {difficulty}
+- Allowed Question Types: {", ".join(question_types)}
+
+Each question must be tailored to the candidate's background and the job description.
+
+**CRITICAL GUIDELINES - QUESTION STRUCTURE:**
+1. **SINGLE QUESTION CONSTRAINT:** Each generated question MUST contain exactly ONE question mark. Keep the wording punchy and concise (maximum 20-30 words).
+2. **TTS-Friendly Formatting:** Avoid parentheses, brackets, or abbreviations (e.g., use "for example" instead of "e.g.").
+3. **Conversational Tone:** Avoid textbook definition questions. Ask how they applied a skill or would handle a scenario.
+
+**Output Format:**
+Return a raw JSON object containing the total questions count and the list of question details. You must strictly adhere to the following JSON structure and return ONLY valid JSON:
+{{
+    "total_questions": {count},
+    "questions": [
+        {{
+            "question_id": 1,
+            "question": "The actual question text here...",
+            "expected_time": "2-3 mins",
+            "difficulty_level": "{difficulty.lower()}",
+            "question_type": "one of the allowed question types"
+        }}
+    ]
+}}
+"""
+        try:
+            logger.info(f"Generating custom questions: count={count}, difficulty={difficulty}, types={question_types}")
+            result = self.generate_response(prompt)
+            if result.get("success"):
+                response_text = result["response"]
+                parsed = self.parse_json(response_text)
+                if isinstance(parsed, list):
+                    parsed = {
+                        "total_questions": len(parsed),
+                        "questions": parsed
+                    }
+                if isinstance(parsed, dict) and "questions" in parsed:
+                    cleaned_questions = []
+                    for idx, q in enumerate(parsed["questions"]):
+                        q_id = q.get("question_id") or (idx + 1)
+                        q_text = q.get("question") or q.get("question_text") or ""
+                        q_time = q.get("expected_time") or "2-3 mins"
+                        
+                        # Handle potential AI mix-up of question_type and difficulty_level
+                        q_diff = str(q.get("difficulty_level") or "").lower()
+                        q_type = str(q.get("question_type") or "").lower()
+                        
+                        valid_types = ["technical", "situational", "behavioural", "behavioral"]
+                        
+                        # If question_type is missing or invalid, but difficulty_level has a valid type name:
+                        if (not q_type or q_type not in valid_types) and q_diff in valid_types:
+                            q_type = q_diff
+                            q_diff = difficulty.lower()
+                            
+                        # Standard fallbacks if still missing
+                        if not q_type or q_type not in valid_types:
+                            q_type = question_types[idx % len(question_types)] if question_types else "technical"
+                            
+                        if not q_diff:
+                            q_diff = difficulty.lower()
+                            
+                        cleaned_questions.append({
+                            "question_id": q_id,
+                            "question": q_text,
+                            "expected_time": q_time,
+                            "difficulty_level": q_diff,
+                            "question_type": q_type
+                        })
+                    
+                    parsed["questions"] = cleaned_questions[:count]
+                    parsed["total_questions"] = len(parsed["questions"])
+                    return parsed
+        except Exception as e:
+            logger.error(f"Error in generate_custom_questions: {e}")
+
+        # Fallback response if generation or parsing fails
+        fallback_questions = []
+        for i in range(1, count + 1):
+            q_type = question_types[i % len(question_types)] if question_types else "technical"
+            fallback_questions.append({
+                "question_id": i,
+                "question": f"Can you describe a challenging project related to {self.job_role} that you managed recently?",
+                "expected_time": "2-3 mins",
+                "difficulty_level": difficulty.lower(),
+                "question_type": q_type
+            })
+        return {
+            "total_questions": count,
+            "questions": fallback_questions
+        }
+
