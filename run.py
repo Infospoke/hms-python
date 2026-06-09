@@ -27,8 +27,10 @@ if __name__ == "__main__":
     logging.info("Loading configurations from database...")
     _load_interview_configs()
     logging.info("Starting background workers as a separate process...")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    workers_path = os.path.join(current_dir, "run_workers.py")
     worker_process = subprocess.Popen(
-        [sys.executable, "-u", "run_workers.py"], stdout=sys.stdout, stderr=sys.stderr
+        [sys.executable, "-u", workers_path], stdout=sys.stdout, stderr=sys.stderr
     )
 
     def cleanup():

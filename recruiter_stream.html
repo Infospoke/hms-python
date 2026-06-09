@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recruiter Live Feed Monitor - Admin Portal</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #050811;
+            --bg-secondary: #0c1222;
+            --bg-tertiary: #161f36;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-primary: #8b5cf6; /* Modern Purple */
+            --accent-glow: rgba(139, 92, 246, 0.15);
+            --danger: #ef4444;
+            --success: #10b981;
+            --border-color: rgba(255, 255, 255, 0.06);
+            --font-sans: 'Plus Jakarta Sans', sans-serif;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            background-image: 
+                radial-gradient(at 0% 100%, rgba(139, 92, 246, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.08) 0px, transparent 50%);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 35px;
+            max-width: 650px;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #a78bfa 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0 0 10px 0;
+            letter-spacing: -0.02em;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 30px;
+            max-width: 1100px;
+            width: 100%;
+        }
+
+        @media (max-width: 950px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .monitor-window {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            background-color: #020308;
+            border-radius: 14px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.95);
+            margin-top: 10px;
+        }
+
+        .monitor-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+
+        .placeholder-text {
+            color: #475569;
+            font-size: 0.95rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .placeholder-icon {
+            color: #334155;
+            animation: pulse-slow 2s infinite ease-in-out;
+        }
+
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 0.4; transform: scale(0.96); }
+            50% { opacity: 0.8; transform: scale(1.04); }
+        }
+
+        /* Video overlays */
+        .feed-badge {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(16, 185, 129, 0.2);
+            border: 1px solid var(--success);
+            color: #a7f3d0;
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .feed-badge.active {
+            opacity: 1;
+        }
+
+        .feed-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--success);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--success);
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        input {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            transition: all 0.25s ease;
+            font-family: inherit;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 4px var(--accent-glow);
+        }
+
+        button {
+            background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+            color: white;
+            border: none;
+            padding: 16px 20px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.45);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.stop {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        button.stop:hover {
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45);
+        }
+
+        .status-pill {
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+
+        .status-offline {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: #fca5a5;
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .status-online {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: #a7f3d0;
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        /* Console/Logs Styling */
+        .console-log {
+            background-color: #03060f;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 200px;
+        }
+
+        .console-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-entries {
+            flex-grow: 1;
+            overflow-y: auto;
+            max-height: 180px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: #94a3b8;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding-right: 5px;
+        }
+
+        .log-entries::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .log-entries::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+        }
+
+        .log-entry {
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .log-time {
+            color: #64748b;
+            margin-right: 8px;
+        }
+
+        .log-info { color: #38bdf8; }
+        .log-success { color: #34d399; }
+        .log-warn { color: #fbbf24; }
+        .log-error { color: #f87171; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Recruiter Live Stream Console</h1>
+        <p class="subtitle">Secure, high-speed remote video review dashboard. Connect to the WebSocket session endpoint to monitor candidate camera feed.</p>
+    </div>
+
+    <div class="dashboard">
+        <!-- Main Feed Panel -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <span style="font-weight: 600; font-size: 1.1rem; color: #f3f4f6;">Candidate Video Monitor</span>
+                <div id="statusBadge" class="status-pill status-offline">Offline</div>
+            </div>
+            
+            <div class="monitor-window">
+                <div id="feedBadge" class="feed-badge">
+                    <div class="feed-dot"></div>
+                    <span>FEED INCOMING</span>
+                </div>
+                
+                <img id="monitorView" class="monitor-img" src="" alt="Live candidate webcam stream" />
+                
+                <div id="placeholder" class="placeholder-text">
+                    <svg class="placeholder-icon" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path>
+                    </svg>
+                    <span>Waiting for stream connection...<br><small style="color: #334155;">Enter the websocket URL and click Connect below.</small></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar controls -->
+        <div class="sidebar">
+            <div class="card">
+                <div class="control-group" style="margin-bottom: 20px;">
+                    <label for="wsUrl">WebSocket Session Endpoint</label>
+                    <input type="text" id="wsUrl" value="ws://127.0.0.1:5002/api/interview/ws/live-monitoring/75">
+                </div>
+
+                <button id="connectBtn">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"></path>
+                    </svg>
+                    Connect Console
+                </button>
+            </div>
+
+            <!-- Console Log Panel -->
+            <div class="console-log">
+                <div class="console-title">
+                    <span>Event Activity Log</span>
+                    <span id="clearLogs" style="cursor: pointer; color: var(--accent-primary); font-size: 0.75rem; text-transform: none;">Clear</span>
+                </div>
+                <div id="logEntries" class="log-entries">
+                    <div class="log-entry"><span class="log-time">[10:00:00]</span><span class="log-info">Console loaded and ready.</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const connectBtn = document.getElementById('connectBtn');
+        const wsUrlInput = document.getElementById('wsUrl');
+        const statusBadge = document.getElementById('statusBadge');
+        const feedBadge = document.getElementById('feedBadge');
+        const monitorView = document.getElementById('monitorView');
+        const placeholder = document.getElementById('placeholder');
+        const logEntries = document.getElementById('logEntries');
+        const clearLogsBtn = document.getElementById('clearLogs');
+
+        let wsConnection = null;
+        let lastFrameTime = null;
+        let frameRateTimer = null;
+        let frameCount = 0;
+
+        function addLog(text, type = 'info') {
+            const timeStr = new Date().toTimeString().split(' ')[0];
+            const logClass = `log-${type}`;
+            const newEntry = document.createElement('div');
+            newEntry.className = 'log-entry';
+            newEntry.innerHTML = `<span class="log-time">[${timeStr}]</span><span class="${logClass}">${text}</span>`;
+            logEntries.appendChild(newEntry);
+            logEntries.scrollTop = logEntries.scrollHeight;
+        }
+
+        clearLogsBtn.addEventListener('click', () => {
+            logEntries.innerHTML = '';
+            addLog("Logs cleared.");
+        });
+
+        connectBtn.addEventListener('click', () => {
+            if (wsConnection) {
+                disconnectConsole();
+                return;
+            }
+
+            const wsUrl = wsUrlInput.value.trim();
+            addLog(`Attempting connection to ${wsUrl}...`, 'info');
+
+            try {
+                wsConnection = new WebSocket(wsUrl);
+
+                wsConnection.onopen = () => {
+                    statusBadge.textContent = "Online";
+                    statusBadge.className = "status-pill status-online";
+                    
+                    connectBtn.textContent = "Disconnect Console";
+                    connectBtn.classList.add('stop');
+                    
+                    addLog("WebSocket link established. Awaiting client video packets...", "success");
+
+                    // Start monitoring stream latency/packet count
+                    frameCount = 0;
+                    frameRateTimer = setInterval(() => {
+                        if (frameCount > 0) {
+                            addLog(`Receiving stream... (~${frameCount * 2} frames/sec)`, 'info');
+                            frameCount = 0;
+                        }
+                    }, 5000);
+                };
+
+                wsConnection.onmessage = (event) => {
+                    // Update monitor rendering
+                    if (placeholder.style.display !== 'none') {
+                        placeholder.style.display = 'none';
+                        monitorView.style.display = 'block';
+                        feedBadge.classList.add('active');
+                        addLog("Video frame stream detected. Live feed active.", "success");
+                    }
+                    
+                    monitorView.src = event.data;
+                    frameCount++;
+                };
+
+                wsConnection.onclose = () => {
+                    addLog("WebSocket connection closed.", "warn");
+                    disconnectConsole();
+                };
+
+                wsConnection.onerror = (err) => {
+                    addLog("WebSocket transmission error occurred.", "error");
+                    console.error(err);
+                    disconnectConsole();
+                };
+
+            } catch (err) {
+                addLog(`Connection attempt failed: ${err.message}`, "error");
+                disconnectConsole();
+            }
+        });
+
+        function disconnectConsole() {
+            if (frameRateTimer) {
+                clearInterval(frameRateTimer);
+                frameRateTimer = null;
+            }
+            if (wsConnection) {
+                wsConnection.close();
+                wsConnection = null;
+            }
+
+            statusBadge.textContent = "Offline";
+            statusBadge.className = "status-pill status-offline";
+            
+            feedBadge.classList.remove('active');
+            monitorView.style.display = 'none';
+            monitorView.src = '';
+            placeholder.style.display = 'flex';
+            
+            connectBtn.textContent = "Connect Console";
+            connectBtn.classList.remove('stop');
+            addLog("Console disconnected.", "warn");
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Portal - Candidate Feed</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #090d16;
+            --bg-secondary: #121826;
+            --bg-tertiary: #1b2336;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --accent-primary: #3b82f6; /* Modern Blue */
+            --accent-glow: rgba(59, 130, 246, 0.15);
+            --danger: #ef4444;
+            --success: #10b981;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --font-sans: 'Plus Jakarta Sans', sans-serif;
+            --font-display: 'Space Grotesk', sans-serif;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.08) 0px, transparent 50%);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 35px;
+            max-width: 600px;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0 0 10px 0;
+            letter-spacing: -0.02em;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 360px;
+            gap: 30px;
+            max-width: 1050px;
+            width: 100%;
+        }
+
+        @media (max-width: 900px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            background-color: #040711;
+            border-radius: 14px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+            margin-top: 10px;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect for candidate */
+        }
+
+        /* Video overlays */
+        .live-badge {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(239, 68, 68, 0.2);
+            border: 1px solid var(--danger);
+            color: #fca5a5;
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .live-badge.active {
+            opacity: 1;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--danger);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.6; }
+        }
+
+        .camera-guide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            box-sizing: border-box;
+            border-radius: 12px;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+        }
+
+        .guide-oval {
+            width: 50%;
+            height: 65%;
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+        }
+
+        .controls-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        input {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            transition: all 0.25s ease;
+            font-family: inherit;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 4px var(--accent-glow);
+        }
+
+        button {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            padding: 16px 20px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.45);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.stop {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        button.stop:hover {
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45);
+        }
+
+        .status-badge-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 5px;
+        }
+
+        .status-pill {
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+
+        .status-disconnected {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: #fca5a5;
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .status-connected {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: #a7f3d0;
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .instructions-card {
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .instructions-card h3 {
+            margin: 0 0 12px 0;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .instructions-card ul {
+            margin: 0;
+            padding-left: 18px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>AI Proctoring - Candidate Stream</h1>
+        <p class="subtitle">Please share your camera feed to start the automated identity and activity monitoring session.</p>
+    </div>
+
+    <div class="dashboard">
+        <!-- Main Video Panel -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <span style="font-weight: 600; font-size: 1.1rem; color: #f3f4f6;">Live Webcam Monitor</span>
+                <div id="statusBadge" class="status-pill status-disconnected">Disconnected</div>
+            </div>
+            
+            <div class="video-container">
+                <div id="liveBadge" class="live-badge">
+                    <div class="live-dot"></div>
+                    <span>LIVE STREAMING</span>
+                </div>
+                <div class="camera-guide">
+                    <div class="guide-oval"></div>
+                </div>
+                <video id="webcam" autoplay playsinline muted></video>
+            </div>
+        </div>
+
+        <!-- Sidebar controls -->
+        <div class="controls-sidebar">
+            <div class="card">
+                <div class="control-group" style="margin-bottom: 20px;">
+                    <label for="wsUrl">WebSocket Server Endpoint</label>
+                    <input type="text" id="wsUrl" value="ws://127.0.0.1:5002/api/interview/ws/live-monitoring/75">
+                </div>
+
+                <button id="startBtn">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path>
+                    </svg>
+                    Start Camera Stream
+                </button>
+            </div>
+
+            <!-- Instructions -->
+            <div class="instructions-card">
+                <h3>Camera Placement Guidelines</h3>
+                <ul>
+                    <li>Ensure you are in a well-lit room with light in front of you.</li>
+                    <li>Center your head within the guide circle shown on screen.</li>
+                    <li>Do not close or minimize this tab during the interview session.</li>
+                    <li>Avoid having other people in the camera's field of view.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const wsUrlInput = document.getElementById('wsUrl');
+        const statusBadge = document.getElementById('statusBadge');
+        const liveBadge = document.getElementById('liveBadge');
+        const webcam = document.getElementById('webcam');
+
+        let wsConnection = null;
+        let localStream = null;
+        let streamInterval = null;
+
+        startBtn.addEventListener('click', async () => {
+            // If already active, stop it
+            if (localStream || wsConnection) {
+                stopStreaming();
+                return;
+            }
+
+            const wsUrl = wsUrlInput.value.trim();
+            
+            try {
+                // 1. Request Webcam Media
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 },
+                        facingMode: "user"
+                    } 
+                });
+                webcam.srcObject = localStream;
+
+                // 2. Open WebSocket
+                wsConnection = new WebSocket(wsUrl);
+
+                wsConnection.onopen = () => {
+                    statusBadge.textContent = "Streaming";
+                    statusBadge.className = "status-pill status-connected";
+                    
+                    liveBadge.classList.add('active');
+                    
+                    startBtn.textContent = "Stop Camera Stream";
+                    startBtn.classList.add('stop');
+                    
+                    // Setup capture canvas
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+
+                    // Broadcast frame every 100ms
+                    streamInterval = setInterval(() => {
+                        if (wsConnection && wsConnection.readyState === WebSocket.OPEN && webcam.videoWidth > 0) {
+                            canvas.width = 320; // scale down for efficient socket throughput
+                            canvas.height = 240;
+                            // Flip horizontally to reverse mirror on sending
+                            context.translate(canvas.width, 0);
+                            context.scale(-1, 1);
+                            context.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+                            // Reset transform
+                            context.setTransform(1, 0, 0, 1, 0, 0);
+                            
+                            const frameData = canvas.toDataURL('image/jpeg', 0.55); // high compression JPEG
+                            wsConnection.send(frameData);
+                        }
+                    }, 100);
+                };
+
+                wsConnection.onclose = () => {
+                    stopStreaming();
+                };
+
+                wsConnection.onerror = (err) => {
+                    console.error("WebSocket Error:", err);
+                    stopStreaming();
+                };
+
+            } catch (err) {
+                alert("Could not access camera or connect to server. Please check permissions and backend configuration.");
+                console.error(err);
+                stopStreaming();
+            }
+        });
+
+        function stopStreaming() {
+            if (streamInterval) {
+                clearInterval(streamInterval);
+                streamInterval = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            webcam.srcObject = null;
+            
+            if (wsConnection) {
+                wsConnection.close();
+                wsConnection = null;
+            }
+
+            statusBadge.textContent = "Disconnected";
+            statusBadge.className = "status-pill status-disconnected";
+            
+            liveBadge.classList.remove('active');
+            
+            startBtn.textContent = "Start Camera Stream";
+            startBtn.classList.remove('stop');
+        }
+    </script>
+</body>
+</html>

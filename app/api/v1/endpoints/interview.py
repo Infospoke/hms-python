@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, WebSocket, WebSocketDisconnect
 from sqlmodel import Session, select
 from app import models
 from app.api import deps
@@ -7,6 +7,7 @@ from app.core import config as consts
 from uuid import uuid4
 from app.services.email import interview_emails
 from app.services.ai_interviewer.ai_interviewer import AIInterviewer
+from app.services.live_stream_manager import stream_manager
 from app.utils import utils
 from app.utils import timezone_utils
 from app.services.resume_parser.s3_resume_parser import S3ResumeParser
@@ -1935,3 +1936,143 @@ def delete_custom_question(
         )
 
 
+def process_live_frame_sync(session_id: str, data: str):
+    from app.services.ai_interviewer.proctoring import ProctoringEngine
+    from app.db.session import engine
+    from sqlmodel import Session, select
+    from app import models
+    import json
+    from io import BytesIO
+    from app.utils import timezone_utils
+    from app.services import minio_helper as aws_helper
+    
+    try:
+        # 1. Decode base64 image
+        if data.startswith("data:image"):
+            header, b64_data = data.split(",", 1)
+        else:
+            b64_data = data
+            
+        image_data = base64.b64decode(b64_data)
+        image_array = np.frombuffer(image_data, np.uint8)
+        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+        if image is None:
+            return None, None
+            
+        # 2. Run proctoring engine
+        engine_instance = ProctoringEngine()
+        result = engine_instance.analyze_frame(image)
+        alerts = result.get("alerts", [])
+        metrics = result.get("metrics", {})
+        print(alerts)
+        # 3. Log to DB and MinIO if there are alerts
+        if alerts:
+            with Session(engine) as db_session:
+                interview_analysis = db_session.exec(
+                    select(models.InterviewAnalysis).where(
+                        models.InterviewAnalysis.interview_session_id == session_id
+                    )
+                ).first()
+                # print(interview_analysis)
+                
+                if interview_analysis:
+                    try:
+                        timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
+                        clean_alert_type = alerts[0].replace(" ", "_").lower()
+                        
+                        # Save violation image to MinIO/S3
+                        image_filename = f"live_violation_{clean_alert_type}_{timestamp_str}.jpg"
+                        s3_object_name = f"ai-interviews/proctoring/{session_id}/{image_filename}"
+                        
+                        _, buffer = cv2.imencode(".jpg", image)
+                        image_bytes = buffer.tobytes()
+                        
+                        upload_result = aws_helper.upload_image_to_s3(image_bytes, s3_object_name)
+                        image_path = upload_result.get("s3_url") if upload_result.get("success") else None
+                        
+                        # Save proctoring log JSON file to MinIO/S3
+                        log_filename = f"live_log_{clean_alert_type}_{timestamp_str}.json"
+                        log_s3_object_name = f"ai-interviews/proctoring/{session_id}/{log_filename}"
+                        log_payload = {
+                            "session_id": session_id,
+                            "alerts": alerts,
+                            "metrics": metrics,
+                            "timestamp": timezone_utils.get_ist_now().isoformat(),
+                            "image_path": image_path
+                        }
+                        log_bytes = json.dumps(log_payload, indent=2).encode("utf-8")
+                        
+                        # Upload JSON file to MinIO bucket
+                        minio_client = aws_helper.get_minio_client()
+                        if minio_client:
+                            bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
+                            aws_helper.ensure_bucket_exists(bucket_name)
+                            minio_client.put_object(
+                                bucket_name,
+                                log_s3_object_name,
+                                data=BytesIO(log_bytes),
+                                length=len(log_bytes),
+                                content_type="application/json"
+                            )
+                        
+                        # Save to SQL DB log
+                        proctoring_log = models.ProctoringLogs(
+                            interview_analysis_id=interview_analysis.id,
+                            event_type=models.ProctoringEventType.visual_violation,
+                            details=json.dumps(alerts),
+                            image_path=image_path,
+                        )
+                        db_session.add(proctoring_log)
+                        db_session.commit()
+                    except Exception as err:
+                        logger.error(f"Error logging live proctoring violation: {err}")
+        return alerts, metrics
+    except Exception as e:
+        logger.error(f"Error processing live frame: {e}")
+        return None, None
+
+
+async def run_background_detection(session_id: str, data: str):
+    import asyncio
+    try:
+        # Run process_live_frame_sync in a thread pool silently
+        await asyncio.to_thread(process_live_frame_sync, session_id, data)
+    except Exception as e:
+        logger.error(f"Error in background live monitoring detection for session {session_id}: {e}")
+    finally:
+        # Reset is_processing flag
+        state = stream_manager.get_proctoring_state(session_id)
+        state["is_processing"] = False
+
+
+@router.websocket("/ws/live-monitoring/{session_id}")
+async def live_monitoring_stream(websocket: WebSocket, session_id: str):
+    import asyncio
+    import time
+    logger.info(f"WebSocket live monitoring request received for session: {session_id}")
+    await stream_manager.connect(session_id, websocket)
+    try:
+        while True:
+            # Receive video frame (Base64 string or binary) from candidate
+            data = await websocket.receive_text()
+            
+            # 1. Forward the video frame IMMEDIATELY for lag-free video stream
+            await stream_manager.broadcast_frame(session_id, data, sender=websocket)
+            
+            # 2. Asynchronously evaluate proctoring violations without blocking
+            if data.startswith("data:image"):
+                state = stream_manager.get_proctoring_state(session_id)
+                current_time = time.time()
+                
+                # Check rate-limit (3 seconds) and guarantee no parallel detection runs
+                if not state["is_processing"] and (current_time - state["last_detection_time"] >= 3.0):
+                    state["is_processing"] = True
+                    state["last_detection_time"] = current_time
+                    asyncio.create_task(run_background_detection(session_id, data))
+            
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket live monitoring connection disconnected for session: {session_id}")
+        stream_manager.disconnect(session_id, websocket)
+    except Exception as e:
+        logger.error(f"Error in live monitoring WebSocket for session {session_id}: {e}")
+        stream_manager.disconnect(session_id, websocket)
