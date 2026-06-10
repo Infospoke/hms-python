@@ -89,6 +89,7 @@ def _process_message(payload: dict) -> None:
                     event_type=models.ProctoringEventType.visual_violation,
                     details=json_dumps(result["alerts"]),
                     image_path=image_path,
+                    tb_severity="high severity",
                 )
                 session.flush()
                 session.add(proctoring_log)

@@ -96,6 +96,7 @@ class ProctoringLogs(SQLModel, table=(True)):
     timestamp: datetime = Field(default_factory=timezone_utils.get_ist_now)
     details: Optional[str] = Field(default=None, sa_column=Column(Text))
     image_path: Optional[str] = Field(default=None)
+    tb_severity: Optional[str] = Field(default="low severity", max_length=20)
     is_deleted: bool = Field(default=False)
 
 

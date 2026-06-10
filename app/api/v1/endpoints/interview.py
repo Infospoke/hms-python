@@ -57,6 +57,28 @@ def create_interview_session(
             c["name"]
             for c in inspector.get_columns(models.InterviewSessions.__tablename__)
         ]
+        if "min_pass_percentage" not in columns:
+            logger.info(
+                f"Patching {models.InterviewSessions.__tablename__} table: adding min_pass_percentage column"
+            )
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN min_pass_percentage INTEGER DEFAULT 70"
+                )
+            )
+            session.commit()
+
+        if "acceptable_score_range" not in columns:
+            logger.info(
+                f"Patching {models.InterviewSessions.__tablename__} table: adding acceptable_score_range column"
+            )
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN acceptable_score_range VARCHAR(50) DEFAULT '50-100'"
+                )
+            )
+            session.commit()
+
         if "question_type" not in columns:
             logger.info(
                 f"Patching {models.InterviewSessions.__tablename__} table: adding question_type column"
@@ -141,6 +163,21 @@ def create_interview_session(
             )
             session.commit()
 
+        proctoring_columns = [
+            c["name"]
+            for c in inspector.get_columns(models.ProctoringLogs.__tablename__)
+        ]
+        if "tb_severity" not in proctoring_columns:
+            logger.info(
+                f"Patching {models.ProctoringLogs.__tablename__} table: adding tb_severity column"
+            )
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.ProctoringLogs.__tablename__} ADD COLUMN tb_severity VARCHAR(20) DEFAULT 'low severity'"
+                )
+            )
+            session.commit()
+
         session.commit()
 
         job_application = session.exec(
@@ -157,6 +194,8 @@ def create_interview_session(
             question_type=data.question_type,
             exam_exit_password="",
             status=models.InterviewSessionStatusEnum.scheduled,
+            min_pass_percentage=getattr(data, "min_pass_percentage", 70),
+            acceptable_score_range=getattr(data, "acceptable_score_range", "50-100"),
         )
 
         interview_analysis = models.InterviewAnalysis(
@@ -392,6 +431,39 @@ def admin_schedule_interview(
             )
             session.commit()
 
+        proctoring_columns = [
+            c["name"]
+            for c in inspector.get_columns(models.ProctoringLogs.__tablename__)
+        ]
+        if "tb_severity" not in proctoring_columns:
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.ProctoringLogs.__tablename__} ADD COLUMN tb_severity VARCHAR(20) DEFAULT 'low severity'"
+                )
+            )
+            session.commit()
+
+        # Check InterviewSessions table columns
+        session_columns = [
+            c["name"]
+            for c in inspector.get_columns(models.InterviewSessions.__tablename__)
+        ]
+        if "min_pass_percentage" not in session_columns:
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN min_pass_percentage INTEGER DEFAULT 70"
+                )
+            )
+            session.commit()
+
+        if "acceptable_score_range" not in session_columns:
+            session.execute(
+                text(
+                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN acceptable_score_range VARCHAR(50) DEFAULT '50-100'"
+                )
+            )
+            session.commit()
+
         # --- Look up (or auto-create) the interview session ---
         interview_session = session.exec(
             select(models.InterviewSessions).where(
@@ -426,6 +498,8 @@ def admin_schedule_interview(
                 question_type=data.question_type,
                 exam_exit_password="",
                 status=models.InterviewSessionStatusEnum.scheduled,
+                min_pass_percentage=getattr(data, "min_pass_percentage", 70),
+                acceptable_score_range=getattr(data, "acceptable_score_range", "50-100"),
             )
 
             session.add(interview_session)
@@ -661,6 +735,8 @@ def fetch_interview_analysis(
         analysis_data = {
             "application_id": interview_analysis.application_id,
             "status": interview_analysis.status,
+            "min_pass_percentage": interview_session.min_pass_percentage if interview_session else 70,
+            "acceptable_score_range": interview_session.acceptable_score_range if interview_session else "50-100",
             "total_score": interview_analysis.total_score,
             "recommendation": interview_analysis.recommendation,
             "interview_timeline": interview_timeline,
@@ -691,6 +767,7 @@ def fetch_interview_analysis(
                 {
                     "id": log.id,
                     "event_type": log.event_type,
+                    "tb_severity": log.tb_severity or "low severity",
                     "timestamp": (
                         timezone_utils.format_datetime_for_api(log.timestamp)
                         if log.timestamp
@@ -1283,10 +1360,31 @@ def create_proctoring_log(
                 detail="Interview session not found.",
             )
 
+        event_type_str = str(data.event_type)
+        tb_sev = "low severity"
+        if event_type_str in [models.ProctoringEventType.visual_violation, models.ProctoringEventType.clipboard_violation, "Visual Violation", "Clipboard Violation"]:
+            tb_sev = "high severity"
+        elif event_type_str in [
+            models.ProctoringEventType.browser_tab_switch,
+            models.ProctoringEventType.right_click_blocked,
+            models.ProctoringEventType.fullscreen_exit,
+            models.ProctoringEventType.fullscreen_auto_reenter,
+            models.ProctoringEventType.esc_key_attempt,
+            models.ProctoringEventType.forbidden_key_attempt,
+            "BROWSER_TAB_SWITCH",
+            "RIGHT_CLICK_BLOCKED",
+            "FULLSCREEN_EXIT",
+            "FULLSCREEN_AUTO_REENTER",
+            "ESC_KEY_ATTEMPT",
+            "FORBIDDEN_KEY_ATTEMPT"
+        ]:
+            tb_sev = "Medium severity"
+
         proctoring_log = models.ProctoringLogs(
             interview_analysis_id=interview_analysis.id,
             event_type=data.event_type,
             details=data.details,
+            tb_severity=tb_sev,
         )
 
         session.flush()
@@ -1421,6 +1519,20 @@ def generate_ai_questions(
 ):
     logger.info(f"generate-ai-questions for application_id: {data.application_id}")
     try:
+        # Update pass criteria on InterviewSessions if provided
+        interview_session = session.exec(
+            select(models.InterviewSessions).where(
+                models.InterviewSessions.application_id == data.application_id
+            )
+        ).first()
+        if interview_session:
+            if data.min_pass_percentage is not None:
+                interview_session.min_pass_percentage = data.min_pass_percentage
+            if data.acceptable_score_range is not None:
+                interview_session.acceptable_score_range = data.acceptable_score_range
+            session.add(interview_session)
+            # We don't commit here, we let the final commit at the end of the endpoint commit all changes together
+
         resume_analysis = session.exec(
             select(models.ResumeAnalysis).where(
                 models.ResumeAnalysis.application_id == data.application_id
@@ -1935,7 +2047,6 @@ def delete_custom_question(
             detail="Failed to delete custom question.",
         )
 
-
 def process_live_frame_sync(session_id: str, data: str):
     from app.services.ai_interviewer.proctoring import ProctoringEngine
     from app.db.session import engine
@@ -2021,6 +2132,7 @@ def process_live_frame_sync(session_id: str, data: str):
                             event_type=models.ProctoringEventType.visual_violation,
                             details=json.dumps(alerts),
                             image_path=image_path,
+                            tb_severity="high severity",
                         )
                         db_session.add(proctoring_log)
                         db_session.commit()
