@@ -146,11 +146,21 @@ def send_interview_result_email(
     background_tasks: BackgroundTasks,
     db_session: Session,
 ):
+    from sqlmodel import select
     job_title, candidate_name, candidate_email = get_candidate_details(
         interview_analysis.application_id, db_session
     )
 
-    cutoff_score = get_cutoff_score(db_session)
+    interview_session = db_session.exec(
+        select(models.InterviewSessions).where(
+            models.InterviewSessions.interview_session_id == interview_analysis.interview_session_id
+        )
+    ).first()
+
+    if interview_session and interview_session.min_pass_percentage is not None:
+        cutoff_score = interview_session.min_pass_percentage
+    else:
+        cutoff_score = get_cutoff_score(db_session)
 
     is_selected = interview_analysis.total_score >= cutoff_score
 

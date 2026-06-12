@@ -614,10 +614,70 @@ class ResumeAnalyzer:
                     "ResumeAnalyzer",
                 )
 
-                if self.background_tasks:
+                is_selected = result.get("final_score", 0) >= 50
+                if is_selected:
                     try:
-                        is_selected = result.get("final_score", 0) >= 50
-                        if not is_selected:
+                        logger.info(f"Application {application_id} selected (score: {result.get('final_score', 0)}). Auto-creating interview session.")
+                        
+                        from uuid import uuid4
+                        existing_session = self.session.exec(
+                            select(models.InterviewSessions).where(
+                                models.InterviewSessions.application_id == application_id
+                            )
+                        ).first()
+                        
+                        if not existing_session:
+                            job_app = self.session.exec(
+                                select(models.JobApplications).where(
+                                    models.JobApplications.id == application_id
+                                )
+                            ).first()
+                            
+                            interview_session_id = str(uuid4())
+                            new_session = models.InterviewSessions(
+                                interview_session_id=interview_session_id,
+                                application_id=application_id,
+                                question_type="AI",
+                                exam_exit_password="",
+                                status=models.InterviewSessionStatusEnum.scheduled,
+                                job_id=job_app.job_id if job_app else None,
+                            )
+                            self.session.add(new_session)
+                            self.session.flush()
+                            
+                            existing_analysis = self.session.exec(
+                                select(models.InterviewAnalysis).where(
+                                    models.InterviewAnalysis.application_id == application_id
+                                )
+                            ).first()
+                            if not existing_analysis:
+                                new_analysis = models.InterviewAnalysis(
+                                    application_id=application_id,
+                                    interview_session_id=interview_session_id,
+                                    status=models.StatusEnum.not_started,
+                                    questions=[],
+                                    job_id=job_app.job_id if job_app else None,
+                                )
+                                self.session.add(new_analysis)
+                            
+                            self.session.commit()
+                            interview_session = new_session
+                        else:
+                            interview_session = existing_session
+
+                        if self.background_tasks:
+                            from app.services.email.interview_emails import send_interview_invitation
+                            send_interview_invitation(
+                                interview_session,
+                                self.background_tasks,
+                                self.session
+                            )
+                            logger.info(f"Interview invitation sent to candidate for application {application_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to auto-create interview session/send invite for application {application_id}: {str(e)}")
+                else:
+                    if self.background_tasks:
+                        try:
                             job_title, candidate_name, candidate_email = get_candidate_details(
                                 application_id, self.session
                             )
@@ -630,10 +690,8 @@ class ResumeAnalyzer:
                                 background_tasks=self.background_tasks,
                             )
                             logger.info(f"Rejection email sent to {candidate_email} for application {application_id}")
-                        else:
-                            logger.info(f"Application {application_id} selected (score: {result.get('final_score', 0)}). Skipping notification email as per requirement.")
-                    except Exception as e:
-                        logger.error(f"Failed to handle email notification for application {application_id}: {str(e)}")
+                        except Exception as e:
+                            logger.error(f"Failed to send rejection email for application {application_id}: {str(e)}")
 
             else:
                 logger.warning(messages.FAILED_TO_SAVE_ANALYSIS(filename))

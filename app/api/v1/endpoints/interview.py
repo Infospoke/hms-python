@@ -43,10 +43,25 @@ def create_interview_session(
     ).first()
 
     if interview_session is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Interview Session is already created for candidate: {data.application_id}",
-        )
+        # If min_pass_percentage or acceptable_score_range is provided, update it
+        updated = False
+        if data.min_pass_percentage is not None:
+            interview_session.min_pass_percentage = data.min_pass_percentage
+            updated = True
+        if data.acceptable_score_range is not None:
+            interview_session.acceptable_score_range = data.acceptable_score_range
+            updated = True
+        if updated:
+            session.add(interview_session)
+            session.commit()
+            session.refresh(interview_session)
+            
+        return {
+            "success": True,
+            "application_id": interview_session.application_id,
+            "interview_session_id": interview_session.interview_session_id,
+            "message": "Interview Session already exists for candidate."
+        }
 
     try:
         from sqlalchemy import inspect, text
@@ -57,28 +72,6 @@ def create_interview_session(
             c["name"]
             for c in inspector.get_columns(models.InterviewSessions.__tablename__)
         ]
-        if "min_pass_percentage" not in columns:
-            logger.info(
-                f"Patching {models.InterviewSessions.__tablename__} table: adding min_pass_percentage column"
-            )
-            session.execute(
-                text(
-                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN min_pass_percentage INTEGER DEFAULT 70"
-                )
-            )
-            session.commit()
-
-        if "acceptable_score_range" not in columns:
-            logger.info(
-                f"Patching {models.InterviewSessions.__tablename__} table: adding acceptable_score_range column"
-            )
-            session.execute(
-                text(
-                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN acceptable_score_range VARCHAR(50) DEFAULT '50-100'"
-                )
-            )
-            session.commit()
-
         if "question_type" not in columns:
             logger.info(
                 f"Patching {models.InterviewSessions.__tablename__} table: adding question_type column"
@@ -163,21 +156,6 @@ def create_interview_session(
             )
             session.commit()
 
-        proctoring_columns = [
-            c["name"]
-            for c in inspector.get_columns(models.ProctoringLogs.__tablename__)
-        ]
-        if "tb_severity" not in proctoring_columns:
-            logger.info(
-                f"Patching {models.ProctoringLogs.__tablename__} table: adding tb_severity column"
-            )
-            session.execute(
-                text(
-                    f"ALTER TABLE {models.ProctoringLogs.__tablename__} ADD COLUMN tb_severity VARCHAR(20) DEFAULT 'low severity'"
-                )
-            )
-            session.commit()
-
         session.commit()
 
         job_application = session.exec(
@@ -194,8 +172,8 @@ def create_interview_session(
             question_type=data.question_type,
             exam_exit_password="",
             status=models.InterviewSessionStatusEnum.scheduled,
-            min_pass_percentage=getattr(data, "min_pass_percentage", 70),
-            acceptable_score_range=getattr(data, "acceptable_score_range", "50-100"),
+            min_pass_percentage=data.min_pass_percentage,
+            acceptable_score_range=data.acceptable_score_range,
         )
 
         interview_analysis = models.InterviewAnalysis(
@@ -234,6 +212,7 @@ def create_interview_session(
         return {
             "success": True,
             "application_id": interview_session.application_id,
+            "interview_session_id": interview_session.interview_session_id,
         }
 
     except Exception as err:
@@ -431,39 +410,6 @@ def admin_schedule_interview(
             )
             session.commit()
 
-        proctoring_columns = [
-            c["name"]
-            for c in inspector.get_columns(models.ProctoringLogs.__tablename__)
-        ]
-        if "tb_severity" not in proctoring_columns:
-            session.execute(
-                text(
-                    f"ALTER TABLE {models.ProctoringLogs.__tablename__} ADD COLUMN tb_severity VARCHAR(20) DEFAULT 'low severity'"
-                )
-            )
-            session.commit()
-
-        # Check InterviewSessions table columns
-        session_columns = [
-            c["name"]
-            for c in inspector.get_columns(models.InterviewSessions.__tablename__)
-        ]
-        if "min_pass_percentage" not in session_columns:
-            session.execute(
-                text(
-                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN min_pass_percentage INTEGER DEFAULT 70"
-                )
-            )
-            session.commit()
-
-        if "acceptable_score_range" not in session_columns:
-            session.execute(
-                text(
-                    f"ALTER TABLE {models.InterviewSessions.__tablename__} ADD COLUMN acceptable_score_range VARCHAR(50) DEFAULT '50-100'"
-                )
-            )
-            session.commit()
-
         # --- Look up (or auto-create) the interview session ---
         interview_session = session.exec(
             select(models.InterviewSessions).where(
@@ -498,8 +444,8 @@ def admin_schedule_interview(
                 question_type=data.question_type,
                 exam_exit_password="",
                 status=models.InterviewSessionStatusEnum.scheduled,
-                min_pass_percentage=getattr(data, "min_pass_percentage", 70),
-                acceptable_score_range=getattr(data, "acceptable_score_range", "50-100"),
+                min_pass_percentage=data.min_pass_percentage,
+                acceptable_score_range=data.acceptable_score_range,
             )
 
             session.add(interview_session)
@@ -735,8 +681,8 @@ def fetch_interview_analysis(
         analysis_data = {
             "application_id": interview_analysis.application_id,
             "status": interview_analysis.status,
-            "min_pass_percentage": interview_session.min_pass_percentage if interview_session else 70,
-            "acceptable_score_range": interview_session.acceptable_score_range if interview_session else "50-100",
+            "min_pass_percentage": interview_session.min_pass_percentage if interview_session else None,
+            "acceptable_score_range": interview_session.acceptable_score_range if interview_session else None,
             "total_score": interview_analysis.total_score,
             "recommendation": interview_analysis.recommendation,
             "interview_timeline": interview_timeline,
@@ -1280,6 +1226,133 @@ async def submit_answers(
         )
 
 
+@router.post("/finalize-questions", response_model=FinalizeQuestionsResponse)
+def finalize_questions(
+    data: FinalizeQuestionsRequest,
+    session: Session = Depends(deps.get_session),
+):
+    """
+    Finalize and save questions for an interview session.
+    This endpoint receives the final list of questions (after edits/deletions/additions)
+    and stores them in the database.
+    """
+    logger.info(f"finalize-questions for session {data.interview_session_id}")
+    
+    try:
+        # Get the interview session
+        interview_session = session.exec(
+            select(models.InterviewSessions).where(
+                models.InterviewSessions.interview_session_id == data.interview_session_id
+            )
+        ).first()
+
+        if not interview_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Interview session not found.",
+            )
+
+        # Get the job application to link with questions
+        job_application = session.exec(
+            select(models.JobApplications).where(
+                models.JobApplications.id == interview_session.application_id
+            )
+        ).first()
+
+        if not job_application:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job application not found.",
+            )
+
+        # Process and preserve finalized questions format from request body
+        finalized_questions = []
+        for idx, q in enumerate(data.questions):
+            q_dict = None
+            if hasattr(q, "model_dump"):
+                q_dict = q.model_dump()
+            elif hasattr(q, "dict"):
+                q_dict = q.dict()
+            elif isinstance(q, dict):
+                q_dict = dict(q)
+                
+            if q_dict is not None:
+                if "question_id" not in q_dict:
+                    q_dict["question_id"] = idx + 1
+                finalized_questions.append(q_dict)
+            else:
+                finalized_questions.append({
+                    "question_id": idx + 1,
+                    "question": str(q),
+                    "question_type": "technical",
+                    "difficulty_level": "Medium",
+                    "expected_time": "2-3 mins"
+                })
+
+
+
+        # Check if AIInterviewQuestions record exists
+        ai_interview_questions = session.exec(
+            select(models.AIInterviewQuestions).where(
+                models.AIInterviewQuestions.application_id == interview_session.application_id
+            )
+        ).first()
+
+        if ai_interview_questions:
+            # Update existing record
+            ai_interview_questions.questions = finalized_questions
+            ai_interview_questions.number_of_questions = len(finalized_questions)
+            session.add(ai_interview_questions)
+            logger.info(f"Updated finalized questions for application {interview_session.application_id}")
+        else:
+            # Create new record if it doesn't exist
+            ai_interview_questions = models.AIInterviewQuestions(
+                application_id=interview_session.application_id,
+                number_of_questions=len(finalized_questions),
+                difficulty_level="Medium",
+                question_type=["technical", "behavioural"],
+                questions=finalized_questions,
+                job_id=job_application.job_id,
+            )
+            session.add(ai_interview_questions)
+            logger.info(f"Created new finalized questions record for application {interview_session.application_id}")
+
+        # Also update the InterviewAnalysis if it exists
+        interview_analysis = session.exec(
+            select(models.InterviewAnalysis).where(
+                models.InterviewAnalysis.interview_session_id == data.interview_session_id
+            )
+        ).first()
+
+        if interview_analysis:
+            interview_analysis.questions = finalized_questions
+            session.add(interview_analysis)
+            logger.info(f"Updated interview analysis with finalized questions")
+
+        # Mark questions as generated
+        interview_session.questions_status = True
+        session.add(interview_session)
+
+        session.commit()
+
+        return FinalizeQuestionsResponse(
+            success=True,
+            message="Questions finalized and saved successfully",
+            interview_session_id=data.interview_session_id,
+            questions_count=len(finalized_questions),
+            finalized_at=timezone_utils.get_ist_now(),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in finalize-questions: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to finalize questions: {str(e)}",
+        )
+
+
 @router.get("/candidate-details")
 def get_candidate_details(
     interview_session_id: str = Query(...),
@@ -1606,80 +1679,32 @@ def generate_ai_questions(
             question_types=data.question_type,
         )
 
-        # Save to tb_ai_interview_questions table
+        # Standardize questions format in questions_response without saving to DB
         if questions_response and "questions" in questions_response:
-            ai_questions = session.exec(
-                select(models.AIInterviewQuestions).where(
-                    models.AIInterviewQuestions.application_id == data.application_id
-                )
-            ).first()
+            new_questions = []
+            for idx, q in enumerate(questions_response["questions"]):
+                if isinstance(q, dict):
+                    q["question_id"] = idx + 1
+                    if "difficulty_level" in q:
+                        q["difficulty_level"] = str(q["difficulty_level"]).lower()
+                    if "question_type" in q:
+                        q["question_type"] = str(q["question_type"]).lower()
+                    new_questions.append(q)
+                else:
+                    new_questions.append({
+                        "question_id": idx + 1,
+                        "question": str(q),
+                        "expected_time": "2-3 mins",
+                        "difficulty_level": data.difficulty_level.lower(),
+                        "question_type": data.question_type[0].lower() if data.question_type else "technical"
+                    })
+            questions_response = {
+                "total_questions": len(new_questions),
+                "questions": new_questions
+            }
 
-        # Save to tb_ai_interview_questions table
-        if questions_response and "questions" in questions_response:
-            ai_questions = session.exec(
-                select(models.AIInterviewQuestions).where(
-                    models.AIInterviewQuestions.application_id == data.application_id
-                )
-            ).first()
-
-            new_questions = questions_response["questions"]
-
-            if ai_questions:
-                existing_questions = list(ai_questions.questions or [])
-                
-                next_id = 1
-                if existing_questions:
-                    ids = [q.get("question_id") or q.get("id") or 0 for q in existing_questions if isinstance(q, dict)]
-                    next_id = max(ids) + 1 if ids else len(existing_questions) + 1
-
-                for idx, q in enumerate(new_questions):
-                    if isinstance(q, dict):
-                        q["question_id"] = next_id + idx
-                        if "difficulty_level" in q:
-                            q["difficulty_level"] = str(q["difficulty_level"]).lower()
-                        if "question_type" in q:
-                            q["question_type"] = str(q["question_type"]).lower()
-                        existing_questions.append(q)
-                    else:
-                        existing_questions.append({
-                            "question_id": next_id + idx,
-                            "question": str(q),
-                            "expected_time": "2-3 mins",
-                            "difficulty_level": data.difficulty_level.lower(),
-                            "question_type": data.question_type[0].lower() if data.question_type else "technical"
-                        })
-
-                ai_questions.number_of_questions = len(existing_questions)
-                ai_questions.questions = existing_questions
-                ai_questions.created_at = timezone_utils.get_ist_now()
-                session.add(ai_questions)
-                
-                questions_response = {
-                    "total_questions": len(existing_questions),
-                    "questions": existing_questions
-                }
-            else:
-                ai_questions = models.AIInterviewQuestions(
-                    application_id=data.application_id,
-                    number_of_questions=data.number_of_questions,
-                    difficulty_level=data.difficulty_level,
-                    question_type=data.question_type,
-                    questions=new_questions
-                )
-                session.add(ai_questions)
-
-            # Sync with tb_interview_analysis if it exists
-            interview_analysis = session.exec(
-                select(models.InterviewAnalysis).where(
-                    models.InterviewAnalysis.application_id == data.application_id
-                )
-            ).first()
-            if interview_analysis:
-                interview_analysis.questions = ai_questions.questions
-                session.add(interview_analysis)
-
+        if interview_session:
             session.commit()
-            session.refresh(ai_questions)
 
         return questions_response
 
@@ -1745,33 +1770,20 @@ def add_custom_question(
 ):
     logger.info(f"add-custom-question for application_id: {data.application_id}")
     try:
-        # Check/create AIInterviewQuestions record
-        ai_questions = session.exec(
-            select(models.AIInterviewQuestions).where(
-                models.AIInterviewQuestions.application_id == data.application_id
+        # Check/create InterviewSession and InterviewAnalysis if they don't exist yet
+        interview_session = session.exec(
+            select(models.InterviewSessions).where(
+                models.InterviewSessions.application_id == data.application_id
             )
         ).first()
 
-        if not ai_questions:
-            ai_questions = models.AIInterviewQuestions(
-                application_id=data.application_id,
-                number_of_questions=0,
-                difficulty_level=data.difficulty_level,
-                question_type=[data.question_type] if data.question_type else [],
-                questions=[]
-            )
-            session.add(ai_questions)
-            session.flush()
-
-        # Check if InterviewAnalysis already exists
         interview_analysis = session.exec(
             select(models.InterviewAnalysis).where(
                 models.InterviewAnalysis.application_id == data.application_id
             )
         ).first()
 
-        if not interview_analysis:
-            # Check if JobApplication exists to get job_id
+        if not interview_session or not interview_analysis:
             job_app = session.exec(
                 select(models.JobApplications).where(
                     models.JobApplications.id == data.application_id
@@ -1783,12 +1795,6 @@ def add_custom_question(
                     detail=f"Job application not found for application_id: {data.application_id}",
                 )
             
-            # Find or auto-create InterviewSession
-            interview_session = session.exec(
-                select(models.InterviewSessions).where(
-                    models.InterviewSessions.application_id == data.application_id
-                )
-            ).first()
             if not interview_session:
                 interview_session_id = str(uuid4())
                 interview_session = models.InterviewSessions(
@@ -1797,26 +1803,40 @@ def add_custom_question(
                     question_type="AI",
                     status=models.InterviewSessionStatusEnum.scheduled,
                     exam_exit_password="",
+                    job_id=job_app.job_id,
                 )
                 session.add(interview_session)
                 session.flush()
             else:
                 interview_session_id = interview_session.interview_session_id
 
-            interview_analysis = models.InterviewAnalysis(
-                application_id=data.application_id,
-                interview_session_id=interview_session_id,
-                status=models.StatusEnum.not_started,
-                questions=[],
-                job_id=job_app.job_id,
-            )
-            session.add(interview_analysis)
-            session.flush()
+            if not interview_analysis:
+                interview_analysis = models.InterviewAnalysis(
+                    application_id=data.application_id,
+                    interview_session_id=interview_session_id,
+                    status=models.StatusEnum.not_started,
+                    questions=[],
+                    job_id=job_app.job_id,
+                )
+                session.add(interview_analysis)
+            
+            session.commit()
 
-        # Add the custom question to the list (use ai_questions list if populated, else interview_analysis list)
-        questions = list(ai_questions.questions or [])
-        if not questions and interview_analysis.questions:
-            questions = list(interview_analysis.questions)
+        # Retrieve current question list from request data, falling back to DB if not provided
+        questions = []
+        if data.existing_questions is not None:
+            questions = list(data.existing_questions)
+        else:
+            # Fallback to check DB
+            ai_questions = session.exec(
+                select(models.AIInterviewQuestions).where(
+                    models.AIInterviewQuestions.application_id == data.application_id
+                )
+            ).first()
+            if ai_questions:
+                questions = list(ai_questions.questions or [])
+            elif interview_analysis and interview_analysis.questions:
+                questions = list(interview_analysis.questions)
 
         # Calculate next question_id
         next_id = 1
@@ -1833,21 +1853,9 @@ def add_custom_question(
         }
         questions.append(new_q)
         
-        # Update and save to both tables
-        ai_questions.questions = questions
-        ai_questions.number_of_questions = len(questions)
-        session.add(ai_questions)
-
-        interview_analysis.questions = questions
-        session.add(interview_analysis)
-
-        session.commit()
-        session.refresh(ai_questions)
-        session.refresh(interview_analysis)
-
-        # Standardize return questions format
+        # Standardize return questions format WITHOUT saving to DB
         returned_questions = []
-        for q in ai_questions.questions:
+        for q in questions:
             if isinstance(q, dict):
                 returned_questions.append({
                     "question_id": q.get("question_id") or q.get("id") or 1,
@@ -1878,65 +1886,20 @@ def update_custom_question(
 ):
     logger.info(f"update-custom-question for application_id: {data.application_id}, question_id: {data.question_id}")
     try:
-        # Check AIInterviewQuestions
-        ai_questions = session.exec(
-            select(models.AIInterviewQuestions).where(
-                models.AIInterviewQuestions.application_id == data.application_id
+        # Check if InterviewSession exists
+        interview_session = session.exec(
+            select(models.InterviewSessions).where(
+                models.InterviewSessions.application_id == data.application_id
             )
         ).first()
-
-        # Check InterviewAnalysis
-        interview_analysis = session.exec(
-            select(models.InterviewAnalysis).where(
-                models.InterviewAnalysis.application_id == data.application_id
-            )
-        ).first()
-
-        if not ai_questions and not interview_analysis:
+        if not interview_session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Interview records not found for application_id: {data.application_id}",
+                detail="Interview session not found.",
             )
 
-        # Retrieve current question list
-        questions = []
-        if ai_questions:
-            questions = list(ai_questions.questions or [])
-        elif interview_analysis:
-            questions = list(interview_analysis.questions or [])
-
-        updated = False
-        for idx, q in enumerate(questions):
-            if isinstance(q, dict):
-                q_id = q.get("question_id") or q.get("id")
-                if q_id == data.question_id:
-                    questions[idx] = {
-                        "question_id": data.question_id,
-                        "question": data.question if data.question is not None else q.get("question") or q.get("question_text") or "",
-                        "expected_time": data.expected_time if data.expected_time is not None else q.get("expected_time") or "2-3 mins",
-                        "difficulty_level": (data.difficulty_level.lower() if data.difficulty_level is not None else q.get("difficulty_level") or "medium"),
-                        "question_type": (data.question_type.lower() if data.question_type is not None else q.get("question_type") or "technical")
-                    }
-                    updated = True
-                    break
-        
-        if not updated:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Question with id {data.question_id} not found in this interview session.",
-            )
-
-        # Save to tables
-        if ai_questions:
-            ai_questions.questions = questions
-            session.add(ai_questions)
-
-        if interview_analysis:
-            interview_analysis.questions = questions
-            session.add(interview_analysis)
-
-        session.commit()
-
+        # Do NOT update/save any drafts to database tables.
+        # The frontend manages the in-memory state and sends the final list of questions to /finalize-questions.
         return {
             "status": "success",
             "message": "Question updated successfully"
@@ -1958,82 +1921,20 @@ def delete_custom_question(
 ):
     logger.info(f"delete-custom-question for application_id: {data.application_id}, question_id: {data.question_id}")
     try:
-        # Check AIInterviewQuestions
-        ai_questions = session.exec(
-            select(models.AIInterviewQuestions).where(
-                models.AIInterviewQuestions.application_id == data.application_id
+        # Check if InterviewSession exists
+        interview_session = session.exec(
+            select(models.InterviewSessions).where(
+                models.InterviewSessions.application_id == data.application_id
             )
         ).first()
-
-        # Check InterviewAnalysis
-        interview_analysis = session.exec(
-            select(models.InterviewAnalysis).where(
-                models.InterviewAnalysis.application_id == data.application_id
-            )
-        ).first()
-
-        if not ai_questions and not interview_analysis:
+        if not interview_session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Interview records not found for application_id: {data.application_id}",
+                detail="Interview session not found.",
             )
 
-        questions = []
-        if ai_questions:
-            questions = list(ai_questions.questions or [])
-        elif interview_analysis:
-            questions = list(interview_analysis.questions or [])
-
-        initial_length = len(questions)
-        
-        # Filter out the deleted question
-        filtered_questions = []
-        for q in questions:
-            if isinstance(q, dict):
-                q_id = q.get("question_id") or q.get("id")
-                if q_id != data.question_id:
-                    filtered_questions.append(q)
-            else:
-                filtered_questions.append(q)
-
-        if len(filtered_questions) == initial_length:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Question with id {data.question_id} not found in this interview session.",
-            )
-
-        # Re-index the remaining questions
-        reindexed_questions = []
-        for idx, q in enumerate(filtered_questions):
-            if isinstance(q, dict):
-                reindexed_questions.append({
-                    "question_id": idx + 1,
-                    "question": q.get("question") or q.get("question_text") or "",
-                    "expected_time": q.get("expected_time") or "2-3 mins",
-                    "difficulty_level": q.get("difficulty_level") or "medium",
-                    "question_type": q.get("question_type") or "technical"
-                })
-            else:
-                reindexed_questions.append({
-                    "question_id": idx + 1,
-                    "question": str(q),
-                    "expected_time": "2-3 mins",
-                    "difficulty_level": "medium",
-                    "question_type": "technical"
-                })
-
-        # Update and save to both tables
-        if ai_questions:
-            ai_questions.questions = reindexed_questions
-            ai_questions.number_of_questions = len(reindexed_questions)
-            session.add(ai_questions)
-
-        if interview_analysis:
-            interview_analysis.questions = reindexed_questions
-            session.add(interview_analysis)
-
-        session.commit()
-
+        # Do NOT delete/save any drafts to database tables.
+        # The frontend manages the in-memory state and sends the final list of questions to /finalize-questions.
         return {
             "status": "success",
             "message": "Question deleted successfully"

@@ -415,6 +415,11 @@ def add_interview_details(results_db, session):
         result["interview_recommendation"] = (
             interview_analysis.recommendation if interview_analysis else None
         )
+        result["interview_session_id"] = interview_session.interview_session_id if interview_session else None
+        result["questions_status"] = interview_session.questions_status if interview_session else False
+        result["min_pass_percentage"] = interview_session.min_pass_percentage if interview_session else None
+        result["acceptable_score_range"] = interview_session.acceptable_score_range if interview_session else None
+
 
         # -------------------------------
         # Candidate decision

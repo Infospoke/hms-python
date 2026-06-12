@@ -58,6 +58,8 @@ class DeleteResumeLogsRequest(BaseModel):
 class CreateInterviewSessionRequest(BaseModel):
     application_id: int
     question_type: str = "AI"
+    min_pass_percentage: int
+    acceptable_score_range: str
 
 
 class StartInterviewRequest(BaseModel):
@@ -75,6 +77,8 @@ class AdminScheduleInterviewRequest(BaseModel):
     scheduled_date: str
     scheduled_time: str
     question_type: str = "AI"  # Used when auto-creating a new session
+    min_pass_percentage: int
+    acceptable_score_range: str
 
 
 class FetchInterviewAnalysisRequest(BaseModel):
@@ -312,6 +316,8 @@ class GenerateAIQuestionsRequest(BaseModel):
     number_of_questions: int = 10
     difficulty_level: str = "Medium"  # "Easy", "Medium", "Hard"
     question_type: List[str] = ["technical", "behavioural", "situational"]
+    min_pass_percentage: Optional[int] = None
+    acceptable_score_range: Optional[str] = None
 
 
 class GeneratedQuestionItem(BaseModel):
@@ -334,6 +340,7 @@ class AddCustomQuestionRequest(BaseModel):
     question_type: str = "technical"
     difficulty_level: str = "Medium"
     expected_time: str = "2-3 mins"
+    existing_questions: Optional[List[Dict[str, Any]]] = None
 
 
 class UpdateCustomQuestionRequest(BaseModel):
@@ -343,10 +350,36 @@ class UpdateCustomQuestionRequest(BaseModel):
     question_type: Optional[str] = None
     difficulty_level: Optional[str] = None
     expected_time: Optional[str] = None
+    existing_questions: Optional[List[Dict[str, Any]]] = None
 
 
 class DeleteCustomQuestionRequest(BaseModel):
     application_id: int
     question_id: int
+    existing_questions: Optional[List[Dict[str, Any]]] = None
+
+
+# --- Finalize Questions ---
+class FinalizedQuestion(BaseModel):
+    question_id: int
+    question: str
+    question_type: str = "technical"
+    difficulty_level: str = "Medium"
+    expected_time: str = "2-3 mins"
+
+
+class FinalizeQuestionsRequest(BaseModel):
+    interview_session_id: str
+    questions: List[Any]
+
+
+
+
+class FinalizeQuestionsResponse(BaseModel):
+    success: bool
+    message: str
+    interview_session_id: str
+    questions_count: int
+    finalized_at: datetime
 
 
