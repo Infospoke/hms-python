@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from app.core import config as consts
 from app import models
@@ -8,9 +9,12 @@ from fastapi_mail import ConnectionConfig, FastMail, MessageSchema
 
 logger = logging.getLogger(__name__)
 
+TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "templates"
+
 env = Environment(
-    loader=FileSystemLoader("templates"), autoescape=select_autoescape(["html", "xml"])
+    loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=select_autoescape(["html", "xml"])
 )
+
 
 def get_mail_config():
     """

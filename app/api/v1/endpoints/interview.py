@@ -43,19 +43,6 @@ def create_interview_session(
     ).first()
 
     if interview_session is not None:
-        # If min_pass_percentage or acceptable_score_range is provided, update it
-        updated = False
-        if data.min_pass_percentage is not None:
-            interview_session.min_pass_percentage = data.min_pass_percentage
-            updated = True
-        if data.acceptable_score_range is not None:
-            interview_session.acceptable_score_range = data.acceptable_score_range
-            updated = True
-        if updated:
-            session.add(interview_session)
-            session.commit()
-            session.refresh(interview_session)
-            
         return {
             "success": True,
             "application_id": interview_session.application_id,
@@ -172,8 +159,6 @@ def create_interview_session(
             question_type=data.question_type,
             exam_exit_password="",
             status=models.InterviewSessionStatusEnum.scheduled,
-            min_pass_percentage=data.min_pass_percentage,
-            acceptable_score_range=data.acceptable_score_range,
         )
 
         interview_analysis = models.InterviewAnalysis(
@@ -308,6 +293,7 @@ def schedule_interview(
         interview_session.schedule_email_sent = False  # Ensure worker picks it up
         interview_session.status = models.InterviewSessionStatusEnum.scheduled
         interview_session.interview_scheduled_datetime = timezone_utils.get_ist_now()
+        interview_session.scheduled_by = "candidate"
 
         session.add(interview_session)
         session.commit()
@@ -444,8 +430,6 @@ def admin_schedule_interview(
                 question_type=data.question_type,
                 exam_exit_password="",
                 status=models.InterviewSessionStatusEnum.scheduled,
-                min_pass_percentage=data.min_pass_percentage,
-                acceptable_score_range=data.acceptable_score_range,
             )
 
             session.add(interview_session)
@@ -485,7 +469,8 @@ def admin_schedule_interview(
         interview_session.schedule_email_sent = False
         interview_session.status = models.InterviewSessionStatusEnum.scheduled
         interview_session.interview_scheduled_datetime = timezone_utils.get_ist_now()
-
+        interview_session.scheduled_by = "recruiter"
+        
         session.add(interview_session)
         session.commit()
         session.refresh(interview_session)
@@ -681,8 +666,6 @@ def fetch_interview_analysis(
         analysis_data = {
             "application_id": interview_analysis.application_id,
             "status": interview_analysis.status,
-            "min_pass_percentage": interview_session.min_pass_percentage if interview_session else None,
-            "acceptable_score_range": interview_session.acceptable_score_range if interview_session else None,
             "total_score": interview_analysis.total_score,
             "recommendation": interview_analysis.recommendation,
             "interview_timeline": interview_timeline,
@@ -1226,6 +1209,47 @@ async def submit_answers(
         )
 
 
+@router.post("/update-move-to-schedule")
+def update_move_to_schedule(
+    data: UpdateMoveToScheduleRequest,
+    session: Session = Depends(deps.get_session),
+):
+    """
+    Update the move_to_schedule status for an interview session.
+    """
+    logger.info(f"update-move-to-schedule for session {data.interview_session_id} to {data.move_to_schedule}")
+    
+    interview_session = session.exec(
+        select(models.InterviewSessions).where(
+            models.InterviewSessions.interview_session_id == data.interview_session_id
+        )
+    ).first()
+
+    if not interview_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview session not found.",
+        )
+
+    interview_session.move_to_schedule = data.move_to_schedule
+    if data.move_to_schedule:
+        interview_session.move_to_schedule_datetime = timezone_utils.get_ist_now()
+    else:
+        interview_session.move_to_schedule_datetime = None
+        
+    session.add(interview_session)
+    session.commit()
+    session.refresh(interview_session)
+    
+    return {
+        "success": True,
+        "message": f"Successfully updated move_to_schedule to {data.move_to_schedule}",
+        "interview_session_id": interview_session.interview_session_id,
+        "move_to_schedule": interview_session.move_to_schedule,
+        "move_to_schedule_datetime": interview_session.move_to_schedule_datetime,
+    }
+
+
 @router.post("/finalize-questions", response_model=FinalizeQuestionsResponse)
 def finalize_questions(
     data: FinalizeQuestionsRequest,
@@ -1329,8 +1353,12 @@ def finalize_questions(
             session.add(interview_analysis)
             logger.info(f"Updated interview analysis with finalized questions")
 
-        # Mark questions as generated
+        # Mark questions as generated and update pass criteria if provided
         interview_session.questions_status = True
+        if data.min_pass_percentage is not None:
+            interview_session.min_pass_percentage = data.min_pass_percentage
+        if data.acceptable_score_range is not None:
+            interview_session.acceptable_score_range = data.acceptable_score_range
         session.add(interview_session)
 
         session.commit()
@@ -1592,19 +1620,7 @@ def generate_ai_questions(
 ):
     logger.info(f"generate-ai-questions for application_id: {data.application_id}")
     try:
-        # Update pass criteria on InterviewSessions if provided
-        interview_session = session.exec(
-            select(models.InterviewSessions).where(
-                models.InterviewSessions.application_id == data.application_id
-            )
-        ).first()
-        if interview_session:
-            if data.min_pass_percentage is not None:
-                interview_session.min_pass_percentage = data.min_pass_percentage
-            if data.acceptable_score_range is not None:
-                interview_session.acceptable_score_range = data.acceptable_score_range
-            session.add(interview_session)
-            # We don't commit here, we let the final commit at the end of the endpoint commit all changes together
+
 
         resume_analysis = session.exec(
             select(models.ResumeAnalysis).where(
@@ -1702,9 +1718,6 @@ def generate_ai_questions(
                 "total_questions": len(new_questions),
                 "questions": new_questions
             }
-
-        if interview_session:
-            session.commit()
 
         return questions_response
 

@@ -58,8 +58,7 @@ class DeleteResumeLogsRequest(BaseModel):
 class CreateInterviewSessionRequest(BaseModel):
     application_id: int
     question_type: str = "AI"
-    min_pass_percentage: int
-    acceptable_score_range: str
+
 
 
 class StartInterviewRequest(BaseModel):
@@ -77,8 +76,7 @@ class AdminScheduleInterviewRequest(BaseModel):
     scheduled_date: str
     scheduled_time: str
     question_type: str = "AI"  # Used when auto-creating a new session
-    min_pass_percentage: int
-    acceptable_score_range: str
+
 
 
 class FetchInterviewAnalysisRequest(BaseModel):
@@ -316,8 +314,7 @@ class GenerateAIQuestionsRequest(BaseModel):
     number_of_questions: int = 10
     difficulty_level: str = "Medium"  # "Easy", "Medium", "Hard"
     question_type: List[str] = ["technical", "behavioural", "situational"]
-    min_pass_percentage: Optional[int] = None
-    acceptable_score_range: Optional[str] = None
+
 
 
 class GeneratedQuestionItem(BaseModel):
@@ -371,6 +368,8 @@ class FinalizedQuestion(BaseModel):
 class FinalizeQuestionsRequest(BaseModel):
     interview_session_id: str
     questions: List[Any]
+    min_pass_percentage: Optional[int] = None
+    acceptable_score_range: Optional[str] = None
 
 
 
@@ -381,5 +380,11 @@ class FinalizeQuestionsResponse(BaseModel):
     interview_session_id: str
     questions_count: int
     finalized_at: datetime
+
+
+class UpdateMoveToScheduleRequest(BaseModel):
+    interview_session_id: str
+    move_to_schedule: bool
+
 
 

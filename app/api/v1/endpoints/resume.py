@@ -417,8 +417,23 @@ def add_interview_details(results_db, session):
         )
         result["interview_session_id"] = interview_session.interview_session_id if interview_session else None
         result["questions_status"] = interview_session.questions_status if interview_session else False
-        result["min_pass_percentage"] = interview_session.min_pass_percentage if interview_session else None
-        result["acceptable_score_range"] = interview_session.acceptable_score_range if interview_session else None
+        result["move_to_schedule"] = interview_session.move_to_schedule if interview_session else False
+        result["move_to_schedule_datetime"] = (
+            timezone_utils.format_datetime_for_api(interview_session.move_to_schedule_datetime)
+            if (interview_session and interview_session.move_to_schedule_datetime)
+            else None
+        )
+        
+        scheduled_by = interview_session.scheduled_by if (interview_session and interview_session.scheduled_by) else None
+        result["scheduled_by"] = scheduled_by
+        if scheduled_by == "candidate":
+            result["scheduled_by_display"] = "Candidate (Self Scheduled)"
+        elif scheduled_by == "recruiter":
+            result["scheduled_by_display"] = "Recruiter (On Behalf)"
+        else:
+            result["scheduled_by_display"] = None
+
+
 
 
         # -------------------------------

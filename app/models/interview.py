@@ -53,6 +53,12 @@ class InterviewSessions(SQLModel, table=(True)):
     min_pass_percentage: Optional[int] = Field(default=None)
     acceptable_score_range: Optional[str] = Field(default=None, max_length=50)
     questions_status: bool = Field(default=False)
+    move_to_schedule: bool = Field(default=False)
+    move_to_schedule_datetime: Optional[datetime] = Field(default=None)
+    scheduled_by: Optional[str] = Field(default=None, max_length=50)
+
+
+
 
 
 class InterviewAnalysis(SQLModel, table=(True)):
