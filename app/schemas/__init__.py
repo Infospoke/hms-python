@@ -366,7 +366,7 @@ class FinalizedQuestion(BaseModel):
 
 
 class FinalizeQuestionsRequest(BaseModel):
-    interview_session_id: str
+    application_id: int
     questions: List[Any]
     min_pass_percentage: Optional[int] = None
     acceptable_score_range: Optional[str] = None
@@ -377,7 +377,7 @@ class FinalizeQuestionsRequest(BaseModel):
 class FinalizeQuestionsResponse(BaseModel):
     success: bool
     message: str
-    interview_session_id: str
+    application_id: int
     questions_count: int
     finalized_at: datetime
 

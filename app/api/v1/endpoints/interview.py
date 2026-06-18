@@ -1260,13 +1260,13 @@ def finalize_questions(
     This endpoint receives the final list of questions (after edits/deletions/additions)
     and stores them in the database.
     """
-    logger.info(f"finalize-questions for session {data.interview_session_id}")
+    logger.info(f"finalize-questions for application {data.application_id}")
     
     try:
         # Get the interview session
         interview_session = session.exec(
             select(models.InterviewSessions).where(
-                models.InterviewSessions.interview_session_id == data.interview_session_id
+                models.InterviewSessions.application_id == data.application_id
             )
         ).first()
 
@@ -1279,7 +1279,7 @@ def finalize_questions(
         # Get the job application to link with questions
         job_application = session.exec(
             select(models.JobApplications).where(
-                models.JobApplications.id == interview_session.application_id
+                models.JobApplications.id == data.application_id
             )
         ).first()
 
@@ -1318,7 +1318,7 @@ def finalize_questions(
         # Check if AIInterviewQuestions record exists
         ai_interview_questions = session.exec(
             select(models.AIInterviewQuestions).where(
-                models.AIInterviewQuestions.application_id == interview_session.application_id
+                models.AIInterviewQuestions.application_id == data.application_id
             )
         ).first()
 
@@ -1327,11 +1327,11 @@ def finalize_questions(
             ai_interview_questions.questions = finalized_questions
             ai_interview_questions.number_of_questions = len(finalized_questions)
             session.add(ai_interview_questions)
-            logger.info(f"Updated finalized questions for application {interview_session.application_id}")
+            logger.info(f"Updated finalized questions for application {data.application_id}")
         else:
             # Create new record if it doesn't exist
             ai_interview_questions = models.AIInterviewQuestions(
-                application_id=interview_session.application_id,
+                application_id=data.application_id,
                 number_of_questions=len(finalized_questions),
                 difficulty_level="Medium",
                 question_type=["technical", "behavioural"],
@@ -1339,12 +1339,12 @@ def finalize_questions(
                 job_id=job_application.job_id,
             )
             session.add(ai_interview_questions)
-            logger.info(f"Created new finalized questions record for application {interview_session.application_id}")
+            logger.info(f"Created new finalized questions record for application {data.application_id}")
 
         # Also update the InterviewAnalysis if it exists
         interview_analysis = session.exec(
             select(models.InterviewAnalysis).where(
-                models.InterviewAnalysis.interview_session_id == data.interview_session_id
+                models.InterviewAnalysis.application_id == data.application_id
             )
         ).first()
 
@@ -1366,7 +1366,7 @@ def finalize_questions(
         return FinalizeQuestionsResponse(
             success=True,
             message="Questions finalized and saved successfully",
-            interview_session_id=data.interview_session_id,
+            application_id=data.application_id,
             questions_count=len(finalized_questions),
             finalized_at=timezone_utils.get_ist_now(),
         )
