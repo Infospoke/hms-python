@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recruiter Live Feed Monitor - Admin Portal</title>
+    <title>Recruiter Multi-Stream Proctoring Console</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,64 +30,211 @@
             background-color: var(--bg-primary);
             color: var(--text-primary);
             margin: 0;
-            padding: 40px 20px;
+            padding: 30px;
             display: flex;
             flex-direction: column;
             align-items: center;
             min-height: 100vh;
             box-sizing: border-box;
             background-image: 
-                radial-gradient(at 0% 100%, rgba(139, 92, 246, 0.1) 0px, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.08) 0px, transparent 50%);
+                radial-gradient(at 0% 100%, rgba(139, 92, 246, 0.08) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.06) 0px, transparent 50%);
         }
 
         .header {
-            text-align: center;
-            margin-bottom: 35px;
-            max-width: 650px;
+            width: 100%;
+            max-width: 1400px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 20px;
         }
 
-        h1 {
+        .header-title h1 {
             font-family: var(--font-display);
-            font-size: 2.2rem;
+            font-size: 2rem;
             font-weight: 700;
             background: linear-gradient(135deg, #a78bfa 0%, #3b82f6 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin: 0 0 10px 0;
+            margin: 0 0 5px 0;
             letter-spacing: -0.02em;
         }
 
-        p.subtitle {
+        .header-title p {
             color: var(--text-secondary);
-            font-size: 1rem;
+            font-size: 0.95rem;
             margin: 0;
-            line-height: 1.5;
         }
 
-        .dashboard {
+        .stats-bar {
+            display: flex;
+            gap: 15px;
+        }
+
+        .stat-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 10px 18px;
+            display: flex;
+            flex-direction: column;
+            min-width: 100px;
+        }
+
+        .stat-val {
+            font-family: var(--font-display);
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+
+        .stat-lbl {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .main-layout {
             display: grid;
-            grid-template-columns: 1fr 380px;
+            grid-template-columns: 1fr 360px;
             gap: 30px;
-            max-width: 1100px;
             width: 100%;
+            max-width: 1400px;
         }
 
-        @media (max-width: 950px) {
-            .dashboard {
+        @media (max-width: 1100px) {
+            .main-layout {
                 grid-template-columns: 1fr;
             }
         }
 
-        .card {
+        /* Stream Feed Grid */
+        .feed-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 25px;
+            align-content: start;
+        }
+
+        /* Elegant Empty State */
+        .empty-state {
+            grid-column: 1 / -1;
+            background-color: var(--bg-secondary);
+            border: 2px dashed rgba(139, 92, 246, 0.2);
+            border-radius: 24px;
+            padding: 60px 40px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+            animation: fadeIn 0.4s ease;
+        }
+
+        .empty-icon {
+            color: rgba(139, 92, 246, 0.3);
+            animation: pulse-slow 3s infinite ease-in-out;
+        }
+
+        .empty-state h3 {
+            font-family: var(--font-display);
+            font-size: 1.35rem;
+            margin: 0;
+            color: var(--text-primary);
+        }
+
+        .empty-state p {
+            color: var(--text-secondary);
+            max-width: 450px;
+            margin: 0;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 0.4; transform: scale(0.96); }
+            50% { opacity: 0.8; transform: scale(1.04); }
+        }
+
+        /* Monitor Card */
+        .monitor-card {
             background-color: var(--bg-secondary);
             border: 1px solid var(--border-color);
             border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            position: relative;
+            box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            animation: cardSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .monitor-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(139, 92, 246, 0.3);
+            box-shadow: 0 20px 40px -10px rgba(139, 92, 246, 0.1);
+        }
+
+        @keyframes cardSlideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: rgba(255, 255, 255, 0.01);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .candidate-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            max-width: 75%;
+        }
+
+        .candidate-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .candidate-meta {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
         }
 
         .monitor-window {
@@ -95,14 +242,11 @@
             width: 100%;
             aspect-ratio: 4 / 3;
             background-color: #020308;
-            border-radius: 14px;
-            border: 1px solid var(--border-color);
             overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
             box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.95);
-            margin-top: 10px;
         }
 
         .monitor-img {
@@ -112,75 +256,140 @@
             display: none;
         }
 
-        .placeholder-text {
+        .monitor-placeholder {
             color: #475569;
-            font-size: 0.95rem;
+            font-size: 0.85rem;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 15px;
+            gap: 12px;
             text-align: center;
             padding: 20px;
         }
 
-        .placeholder-icon {
-            color: #334155;
-            animation: pulse-slow 2s infinite ease-in-out;
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid rgba(139, 92, 246, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--accent-primary);
+            animation: spin 1s linear infinite;
         }
 
-        @keyframes pulse-slow {
-            0%, 100% { opacity: 0.4; transform: scale(0.96); }
-            50% { opacity: 0.8; transform: scale(1.04); }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
-        /* Video overlays */
-        .feed-badge {
+        /* Badges */
+        .badge-live {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            background-color: rgba(16, 185, 129, 0.2);
-            border: 1px solid var(--success);
-            color: #a7f3d0;
-            padding: 6px 14px;
+            top: 15px;
+            left: 15px;
+            background-color: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            color: #d8b4fe;
+            padding: 4px 10px;
             border-radius: 30px;
-            font-size: 0.8rem;
+            font-size: 0.72rem;
             font-weight: 700;
             letter-spacing: 0.05em;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             backdrop-filter: blur(10px);
-            z-index: 10;
-            opacity: 0;
-            transition: opacity 0.3s ease;
+            z-index: 5;
         }
 
-        .feed-badge.active {
-            opacity: 1;
-        }
-
-        .feed-dot {
-            width: 8px;
-            height: 8px;
-            background-color: var(--success);
+        .badge-live-dot {
+            width: 6px;
+            height: 6px;
+            background-color: #a78bfa;
             border-radius: 50%;
-            box-shadow: 0 0 10px var(--success);
+            box-shadow: 0 0 8px #a78bfa;
+            animation: pulse-live 1.5s infinite;
         }
 
+        @keyframes pulse-live {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        .badge-session {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            background-color: rgba(15, 23, 42, 0.75);
+            border: 1px solid var(--border-color);
+            color: #e2e8f0;
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            font-family: var(--font-mono);
+            backdrop-filter: blur(6px);
+            z-index: 5;
+        }
+
+        .card-footer {
+            padding: 12px 20px;
+            border-top: 1px solid var(--border-color);
+            background-color: rgba(255, 255, 255, 0.005);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .fps-counter {
+            font-family: var(--font-mono);
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        /* Sidebar styling */
         .sidebar {
             display: flex;
             flex-direction: column;
             gap: 25px;
         }
 
+        .card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .card-title {
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #f1f5f9;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         .control-group {
             display: flex;
             flex-direction: column;
             gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 10px;
         }
 
         label {
-            font-size: 0.82rem;
+            font-size: 0.78rem;
             font-weight: 600;
             color: var(--text-secondary);
             text-transform: uppercase;
@@ -191,72 +400,90 @@
             background-color: var(--bg-tertiary);
             border: 1px solid var(--border-color);
             color: var(--text-primary);
-            padding: 14px 16px;
-            border-radius: 12px;
-            font-size: 0.95rem;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 0.88rem;
             transition: all 0.25s ease;
             font-family: inherit;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         input:focus {
             outline: none;
             border-color: var(--accent-primary);
-            box-shadow: 0 0 0 4px var(--accent-glow);
+            box-shadow: 0 0 0 3px var(--accent-glow);
         }
 
-        button {
+        .btn {
             background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
             color: white;
             border: none;
-            padding: 16px 20px;
-            font-size: 1rem;
+            padding: 12px 16px;
+            font-size: 0.9rem;
             font-weight: 600;
-            border-radius: 12px;
+            border-radius: 10px;
             cursor: pointer;
             transition: all 0.25s ease;
-            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            white-space: nowrap;
         }
 
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(139, 92, 246, 0.45);
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(139, 92, 246, 0.35);
         }
 
-        button:active {
+        .btn:active {
             transform: translateY(0);
         }
 
-        button.stop {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            box-shadow: none;
         }
 
-        button.stop:hover {
-            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45);
+        .btn-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.04);
+            box-shadow: none;
         }
 
-        .status-pill {
-            padding: 6px 14px;
-            border-radius: 30px;
-            font-size: 0.85rem;
+        .badge-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
             font-weight: 600;
-            border: 1px solid transparent;
-        }
-
-        .status-offline {
             background-color: rgba(239, 68, 68, 0.1);
             color: #fca5a5;
-            border-color: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            align-self: flex-start;
         }
 
-        .status-online {
+        .badge-status.active {
             background-color: rgba(16, 185, 129, 0.1);
             color: #a7f3d0;
             border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .badge-status-dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--danger);
+            border-radius: 50%;
+        }
+
+        .badge-status.active .badge-status-dot {
+            background-color: var(--success);
+            box-shadow: 0 0 6px var(--success);
         }
 
         /* Console/Logs Styling */
@@ -265,19 +492,19 @@
             border: 1px solid var(--border-color);
             border-radius: 16px;
             padding: 20px;
-            flex-grow: 1;
             display: flex;
             flex-direction: column;
-            min-height: 200px;
+            flex-grow: 1;
+            min-height: 250px;
         }
 
         .console-title {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 600;
             color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -286,9 +513,9 @@
         .log-entries {
             flex-grow: 1;
             overflow-y: auto;
-            max-height: 180px;
+            max-height: 280px;
             font-family: var(--font-mono);
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: #94a3b8;
             display: flex;
             flex-direction: column;
@@ -301,7 +528,7 @@
         }
 
         .log-entries::-webkit-scrollbar-thumb {
-            background-color: rgba(255, 255, 255, 0.15);
+            background-color: rgba(255, 255, 255, 0.1);
             border-radius: 20px;
         }
 
@@ -311,7 +538,7 @@
         }
 
         .log-time {
-            color: #64748b;
+            color: #475569;
             margin-right: 8px;
         }
 
@@ -324,79 +551,118 @@
 <body>
 
     <div class="header">
-        <h1>Recruiter Live Stream Console</h1>
-        <p class="subtitle">Secure, high-speed remote video review dashboard. Connect to the WebSocket session endpoint to monitor candidate camera feed.</p>
+        <div class="header-title">
+            <h1>Recruiter Live Stream Console</h1>
+            <p>Real-time candidate video review proctoring. Dynamically monitors all active sessions simultaneously.</p>
+        </div>
+        <div class="stats-bar">
+            <div class="stat-card">
+                <span id="activeSessionsCount" class="stat-val">0</span>
+                <span class="stat-lbl">Active Streams</span>
+            </div>
+            <div class="stat-card">
+                <span id="pollerIndicator" class="stat-val" style="font-size: 1rem; margin-top: 5px; color: var(--success);">OK</span>
+                <span class="stat-lbl">Discovery</span>
+            </div>
+        </div>
     </div>
 
-    <div class="dashboard">
-        <!-- Main Feed Panel -->
-        <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <span style="font-weight: 600; font-size: 1.1rem; color: #f3f4f6;">Candidate Video Monitor</span>
-                <div id="statusBadge" class="status-pill status-offline">Offline</div>
-            </div>
-            
-            <div class="monitor-window">
-                <div id="feedBadge" class="feed-badge">
-                    <div class="feed-dot"></div>
-                    <span>FEED INCOMING</span>
-                </div>
-                
-                <img id="monitorView" class="monitor-img" src="" alt="Live candidate webcam stream" />
-                
-                <div id="placeholder" class="placeholder-text">
-                    <svg class="placeholder-icon" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path>
-                    </svg>
-                    <span>Waiting for stream connection...<br><small style="color: #334155;">Enter the websocket URL and click Connect below.</small></span>
-                </div>
+    <div class="main-layout">
+        <!-- Main dynamic streams grid -->
+        <div id="feedGrid" class="feed-grid">
+            <!-- Dynamic Monitor Cards appended here -->
+            <div id="emptyState" class="empty-state">
+                <svg class="empty-icon" width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                </svg>
+                <h3>No Active Streams Found</h3>
+                <p>Waiting for candidates to start their camera feeds. The dashboard will automatically detect and open connections in real-time.</p>
             </div>
         </div>
 
-        <!-- Sidebar controls -->
+        <!-- Sidebar controls & logs -->
         <div class="sidebar">
+            <!-- Settings & Connection parameters -->
             <div class="card">
-                <div class="control-group" style="margin-bottom: 20px;">
-                    <label for="wsUrl">WebSocket Session Endpoint</label>
-                    <input type="text" id="wsUrl" value="ws://127.0.0.1:5002/api/interview/ws/live-monitoring/75">
+                <div class="card-title">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.827c.292-.24.437-.613.43-.991a6.936 6.936 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    <span>Console Configuration</span>
+                </div>
+                
+                <div class="control-group">
+                    <label for="serverHost">Server API & WS URL</label>
+                    <input type="text" id="serverHost" value="" placeholder="e.g. 127.0.0.1:5002">
                 </div>
 
-                <button id="connectBtn">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25"></path>
-                    </svg>
-                    Connect Console
-                </button>
+                <div id="discoveryStatus" class="badge-status active" style="margin-bottom: 20px;">
+                    <div class="badge-status-dot"></div>
+                    <span id="discoveryStatusText">Polling discovery active</span>
+                </div>
+
+                <div class="control-group" style="margin-top: 5px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                    <label for="manualSessionId">Manual Add Monitor</label>
+                    <div class="control-row">
+                        <input type="text" id="manualSessionId" placeholder="Session ID (e.g. 75)">
+                        <button id="addManualBtn" class="btn">Add Monitor</button>
+                    </div>
+                </div>
             </div>
 
-            <!-- Console Log Panel -->
+            <!-- Global Activity Log Panel -->
             <div class="console-log">
                 <div class="console-title">
-                    <span>Event Activity Log</span>
-                    <span id="clearLogs" style="cursor: pointer; color: var(--accent-primary); font-size: 0.75rem; text-transform: none;">Clear</span>
+                    <span>Proctoring Activity Feed</span>
+                    <span id="clearLogs" style="cursor: pointer; color: var(--accent-primary); font-size: 0.72rem; text-transform: none;">Clear</span>
                 </div>
                 <div id="logEntries" class="log-entries">
-                    <div class="log-entry"><span class="log-time">[10:00:00]</span><span class="log-info">Console loaded and ready.</span></div>
+                    <!-- Loaded dynamically -->
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        const connectBtn = document.getElementById('connectBtn');
-        const wsUrlInput = document.getElementById('wsUrl');
-        const statusBadge = document.getElementById('statusBadge');
-        const feedBadge = document.getElementById('feedBadge');
-        const monitorView = document.getElementById('monitorView');
-        const placeholder = document.getElementById('placeholder');
+        // DOM Elements
+        const feedGrid = document.getElementById('feedGrid');
+        const emptyState = document.getElementById('emptyState');
+        const activeSessionsCount = document.getElementById('activeSessionsCount');
+        const serverHostInput = document.getElementById('serverHost');
+        const manualSessionIdInput = document.getElementById('manualSessionId');
+        const addManualBtn = document.getElementById('addManualBtn');
         const logEntries = document.getElementById('logEntries');
         const clearLogsBtn = document.getElementById('clearLogs');
+        const pollerIndicator = document.getElementById('pollerIndicator');
 
-        let wsConnection = null;
-        let lastFrameTime = null;
-        let frameRateTimer = null;
-        let frameCount = 0;
+        // Local State
+        const activeMonitors = new Map(); // session_id -> MonitorInstance
+        let pollerTimer = null;
 
+        // Auto-configure endpoints based on current window location or defaults
+        function initHostConfig() {
+            let defaultHost = "127.0.0.1:5002";
+            if (window.location.host && window.location.protocol.startsWith('http')) {
+                defaultHost = window.location.host;
+            }
+            serverHostInput.value = defaultHost;
+            addLog(`Server configured to: ${defaultHost}`, 'info');
+        }
+
+        function getHttpUrl() {
+            const host = serverHostInput.value.trim();
+            const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+            return `${protocol}//${host}`;
+        }
+
+        function getWsUrl(sessionId) {
+            const host = serverHostInput.value.trim();
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${protocol}//${host}/api/interview/ws/live-monitoring/${sessionId}`;
+        }
+
+        // Global Logging
         function addLog(text, type = 'info') {
             const timeStr = new Date().toTimeString().split(' ')[0];
             const logClass = `log-${type}`;
@@ -412,89 +678,293 @@
             addLog("Logs cleared.");
         });
 
-        connectBtn.addEventListener('click', () => {
-            if (wsConnection) {
-                disconnectConsole();
+        // Monitor Instance Class managing individual websocket connections and card rendering
+        class MonitorInstance {
+            constructor(sessionId, candidateName = null, jobTitle = null, email = null) {
+                this.sessionId = sessionId;
+                this.candidateName = candidateName || `Session ${sessionId}`;
+                this.jobTitle = jobTitle || "Candidate Feed";
+                this.email = email || "No details available";
+                
+                this.ws = null;
+                this.cardElement = null;
+                this.imgElement = null;
+                this.placeholderElement = null;
+                this.fpsElement = null;
+                this.statusElement = null;
+                
+                this.frameCount = 0;
+                this.fpsTimer = null;
+                this.hasReceivedFrame = false;
+                
+                this.createCard();
+                this.connect();
+            }
+
+            createCard() {
+                const card = document.createElement('div');
+                card.className = 'monitor-card';
+                card.id = `monitor-${this.sessionId}`;
+                card.innerHTML = `
+                    <div class="card-header">
+                        <div class="candidate-info">
+                            <span class="candidate-name" title="${this.candidateName}">${this.candidateName}</span>
+                            <span class="candidate-meta" title="${this.jobTitle} | ${this.email}">${this.jobTitle}</span>
+                        </div>
+                        <button class="close-btn" title="Close stream monitor">
+                            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="monitor-window">
+                        <div class="badge-live">
+                            <div class="badge-live-dot"></div>
+                            <span class="stream-status-lbl">AWAITING FEED</span>
+                        </div>
+                        <span class="badge-session">Session: ${this.sessionId}</span>
+                        
+                        <img class="monitor-img" alt="Candidate webcam stream" />
+                        
+                        <div class="monitor-placeholder">
+                            <div class="spinner"></div>
+                            <span>Connecting websocket...</span>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span class="socket-status">Connecting</span>
+                        <span class="fps-counter">0 FPS</span>
+                    </div>
+                `;
+
+                // Cache elements
+                this.cardElement = card;
+                this.imgElement = card.querySelector('.monitor-img');
+                this.placeholderElement = card.querySelector('.monitor-placeholder');
+                this.fpsElement = card.querySelector('.fps-counter');
+                this.statusElement = card.querySelector('.socket-status');
+                
+                // Add close button event
+                card.querySelector('.close-btn').addEventListener('click', () => {
+                    addLog(`Manual closed monitor for Session ${this.sessionId}`, 'warn');
+                    this.destroy();
+                });
+
+                // Append and hide empty state
+                if (emptyState.style.display !== 'none') {
+                    emptyState.style.display = 'none';
+                }
+                feedGrid.appendChild(card);
+            }
+
+            connect() {
+                const url = getWsUrl(this.sessionId);
+                addLog(`[Session ${this.sessionId}] Establishing websocket link...`, 'info');
+                
+                try {
+                    this.ws = new WebSocket(url);
+                    
+                    this.ws.onopen = () => {
+                        this.statusElement.textContent = "Connected";
+                        this.statusElement.style.color = "var(--success)";
+                        this.placeholderElement.querySelector('span').textContent = "Awaiting video packets...";
+                        addLog(`[Session ${this.sessionId}] WebSocket connected. Listening for candidate frame packets.`, 'success');
+                        
+                        // Start calculating FPS
+                        this.fpsTimer = setInterval(() => {
+                            this.fpsElement.textContent = `${this.frameCount} FPS`;
+                            if (this.frameCount > 0) {
+                                this.statusElement.textContent = "Streaming";
+                                this.statusElement.style.color = "var(--success)";
+                            }
+                            this.frameCount = 0;
+                        }, 1000);
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        if (!this.hasReceivedFrame) {
+                            this.hasReceivedFrame = true;
+                            this.placeholderElement.style.display = 'none';
+                            this.imgElement.style.display = 'block';
+                            this.cardElement.querySelector('.stream-status-lbl').textContent = "LIVE";
+                            this.cardElement.querySelector('.badge-live').style.backgroundColor = "rgba(16, 185, 129, 0.2)";
+                            this.cardElement.querySelector('.badge-live').style.borderColor = "var(--success)";
+                            this.cardElement.querySelector('.badge-live-dot').style.backgroundColor = "var(--success)";
+                            this.cardElement.querySelector('.badge-live-dot').style.boxShadow = "0 0 8px var(--success)";
+                            addLog(`[Session ${this.sessionId}] Streaming active: First frame package decoded.`, 'success');
+                        }
+                        this.imgElement.src = event.data;
+                        this.frameCount++;
+                    };
+
+                    this.ws.onclose = (e) => {
+                        this.statusElement.textContent = "Closed";
+                        this.statusElement.style.color = "var(--danger)";
+                        addLog(`[Session ${this.sessionId}] WebSocket closed. Code: ${e.code}`, 'warn');
+                        this.destroy(false); // remove from grid since it closed
+                    };
+
+                    this.ws.onerror = (err) => {
+                        this.statusElement.textContent = "Error";
+                        this.statusElement.style.color = "var(--danger)";
+                        addLog(`[Session ${this.sessionId}] WebSocket transmission error.`, 'error');
+                        console.error(err);
+                        this.destroy(false);
+                    };
+                } catch (err) {
+                    addLog(`[Session ${this.sessionId}] Failed to open socket: ${err.message}`, 'error');
+                    this.destroy();
+                }
+            }
+
+            destroy(removeFromMap = true) {
+                // Clear timers
+                if (this.fpsTimer) {
+                    clearInterval(this.fpsTimer);
+                }
+                
+                // Close WebSocket
+                if (this.ws) {
+                    this.ws.onopen = null;
+                    this.ws.onmessage = null;
+                    this.ws.onclose = null;
+                    this.ws.onerror = null;
+                    if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+                        this.ws.close();
+                    }
+                    this.ws = null;
+                }
+
+                // Remove DOM Element
+                if (this.cardElement && this.cardElement.parentNode) {
+                    this.cardElement.parentNode.removeChild(this.cardElement);
+                }
+
+                if (removeFromMap) {
+                    activeMonitors.delete(this.sessionId);
+                }
+
+                updateGlobalUI();
+            }
+        }
+
+        // Global UI updates (active count & empty state display)
+        function updateGlobalUI() {
+            const count = activeMonitors.size;
+            activeSessionsCount.textContent = count;
+            
+            if (count === 0) {
+                emptyState.style.display = 'flex';
+            } else {
+                emptyState.style.display = 'none';
+            }
+        }
+
+        // Poll API for active candidate streaming sessions
+        async function pollActiveStreams() {
+            const url = `${getHttpUrl()}/api/interview/active-streams`;
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
+                }
+                const data = await response.json();
+                const streams = data.active_streams || [];
+                
+                pollerIndicator.textContent = "OK";
+                pollerIndicator.style.color = "var(--success)";
+                
+                // Mark found stream IDs
+                const foundSessionIds = new Set();
+                
+                // Add new discovered streams
+                streams.forEach(stream => {
+                    const sId = String(stream.session_id);
+                    foundSessionIds.add(sId);
+                    
+                    if (!activeMonitors.has(sId)) {
+                        addLog(`[Discovery] Automatically found active session: ${sId} (${stream.full_name})`, 'info');
+                        const monitor = new MonitorInstance(sId, stream.full_name, stream.job_title, stream.email);
+                        activeMonitors.set(sId, monitor);
+                    }
+                });
+                
+                // Automatically clean up disconnected monitors
+                for (const [sId, monitor] of activeMonitors.entries()) {
+                    if (!foundSessionIds.has(sId)) {
+                        addLog(`[Discovery] Stream for session ${sId} is no longer active in backend. Disconnecting monitor.`, 'warn');
+                        monitor.destroy(false);
+                        activeMonitors.delete(sId);
+                    }
+                }
+                
+                updateGlobalUI();
+            } catch (err) {
+                pollerIndicator.textContent = "ERR";
+                pollerIndicator.style.color = "var(--danger)";
+                console.warn("Polling error:", err.message);
+            }
+        }
+
+        // Add stream manually
+        addManualBtn.addEventListener('click', async () => {
+            const sId = manualSessionIdInput.value.trim();
+            if (!sId) return;
+            
+            if (activeMonitors.has(sId)) {
+                addLog(`Monitor for session ${sId} is already open!`, 'warn');
                 return;
             }
 
-            const wsUrl = wsUrlInput.value.trim();
-            addLog(`Attempting connection to ${wsUrl}...`, 'info');
-
+            // Attempt to query candidate details for manual session first
+            addLog(`[Manual] Attempting to mount session ${sId}...`, 'info');
+            let candidateName = `Session ${sId}`;
+            let jobTitle = "Manual Session Monitor";
+            let email = "N/A";
+            
             try {
-                wsConnection = new WebSocket(wsUrl);
-
-                wsConnection.onopen = () => {
-                    statusBadge.textContent = "Online";
-                    statusBadge.className = "status-pill status-online";
-                    
-                    connectBtn.textContent = "Disconnect Console";
-                    connectBtn.classList.add('stop');
-                    
-                    addLog("WebSocket link established. Awaiting client video packets...", "success");
-
-                    // Start monitoring stream latency/packet count
-                    frameCount = 0;
-                    frameRateTimer = setInterval(() => {
-                        if (frameCount > 0) {
-                            addLog(`Receiving stream... (~${frameCount * 2} frames/sec)`, 'info');
-                            frameCount = 0;
-                        }
-                    }, 5000);
-                };
-
-                wsConnection.onmessage = (event) => {
-                    // Update monitor rendering
-                    if (placeholder.style.display !== 'none') {
-                        placeholder.style.display = 'none';
-                        monitorView.style.display = 'block';
-                        feedBadge.classList.add('active');
-                        addLog("Video frame stream detected. Live feed active.", "success");
-                    }
-                    
-                    monitorView.src = event.data;
-                    frameCount++;
-                };
-
-                wsConnection.onclose = () => {
-                    addLog("WebSocket connection closed.", "warn");
-                    disconnectConsole();
-                };
-
-                wsConnection.onerror = (err) => {
-                    addLog("WebSocket transmission error occurred.", "error");
-                    console.error(err);
-                    disconnectConsole();
-                };
-
-            } catch (err) {
-                addLog(`Connection attempt failed: ${err.message}`, "error");
-                disconnectConsole();
+                const detailsUrl = `${getHttpUrl()}/api/interview/candidate-details?interview_session_id=${sId}`;
+                const response = await fetch(detailsUrl);
+                if (response.ok) {
+                    const data = await response.json();
+                    candidateName = data.full_name || candidateName;
+                    jobTitle = data.job_title || jobTitle;
+                    email = data.email || email;
+                }
+            } catch (e) {
+                console.warn("Could not fetch candidate details for manual add:", e.message);
             }
+
+            const monitor = new MonitorInstance(sId, candidateName, jobTitle, email);
+            activeMonitors.set(sId, monitor);
+            manualSessionIdInput.value = '';
+            updateGlobalUI();
         });
 
-        function disconnectConsole() {
-            if (frameRateTimer) {
-                clearInterval(frameRateTimer);
-                frameRateTimer = null;
-            }
-            if (wsConnection) {
-                wsConnection.close();
-                wsConnection = null;
-            }
-
-            statusBadge.textContent = "Offline";
-            statusBadge.className = "status-pill status-offline";
+        // Initialize poller
+        function startDiscoveryPoller() {
+            if (pollerTimer) clearInterval(pollerTimer);
             
-            feedBadge.classList.remove('active');
-            monitorView.style.display = 'none';
-            monitorView.src = '';
-            placeholder.style.display = 'flex';
-            
-            connectBtn.textContent = "Connect Console";
-            connectBtn.classList.remove('stop');
-            addLog("Console disconnected.", "warn");
+            pollActiveStreams(); // run immediately
+            pollerTimer = setInterval(pollActiveStreams, 3000); // Poll every 3 seconds
         }
+
+        // Start
+        initHostConfig();
+        addLog("Console loaded and initialized. Awaiting network operations...", 'info');
+        startDiscoveryPoller();
+        
+        // Restart polling if host changes
+        serverHostInput.addEventListener('change', () => {
+            addLog(`Target host changed. Reinitializing poller...`, 'info');
+            // Clean existing monitors
+            for (const monitor of activeMonitors.values()) {
+                monitor.destroy(false);
+            }
+            activeMonitors.clear();
+            updateGlobalUI();
+            startDiscoveryPoller();
+        });
     </script>
 </body>
 </html>

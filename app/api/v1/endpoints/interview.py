@@ -2045,6 +2045,70 @@ async def run_background_detection(session_id: str, data: str):
         state["is_processing"] = False
 
 
+@router.get("/active-streams")
+def get_active_streams(
+    session: Session = Depends(deps.get_session),
+):
+    active_session_ids = stream_manager.get_active_sessions()
+    results = []
+    
+    if not active_session_ids:
+        return {"active_streams": results}
+        
+    try:
+        for sess_id in active_session_ids:
+            job_app = session.exec(
+                select(models.JobApplications)
+                .join(
+                    models.InterviewSessions,
+                    models.JobApplications.id == models.InterviewSessions.application_id,
+                )
+                .where(
+                    models.InterviewSessions.interview_session_id == sess_id
+                )
+            ).first()
+            
+            if job_app:
+                full_name = f"{job_app.first_name} {job_app.last_name}"
+                email = job_app.email
+                job_title = "Unknown Position"
+                try:
+                    job_details = session.exec(
+                        select(models.JobDetails).where(
+                            models.JobDetails.job_id == job_app.job_id
+                        )
+                    ).first()
+                    if job_details:
+                        job_title = db_operations.get_job_title(session, job_details.job_id)
+                except Exception as ex:
+                    logger.warning(f"Could not fetch job title for session {sess_id}: {ex}")
+                
+                results.append({
+                    "session_id": sess_id,
+                    "full_name": full_name,
+                    "email": email,
+                    "job_title": job_title
+                })
+            else:
+                results.append({
+                    "session_id": sess_id,
+                    "full_name": f"Session {sess_id}",
+                    "email": "N/A",
+                    "job_title": "N/A"
+                })
+    except Exception as e:
+        logger.error(f"Error fetching active streams details: {e}")
+        for sess_id in active_session_ids:
+            results.append({
+                "session_id": sess_id,
+                "full_name": f"Session {sess_id}",
+                "email": "N/A",
+                "job_title": "N/A"
+            })
+            
+    return {"active_streams": results}
+
+
 @router.websocket("/ws/live-monitoring/{session_id}")
 async def live_monitoring_stream(websocket: WebSocket, session_id: str):
     import asyncio
@@ -2055,6 +2119,9 @@ async def live_monitoring_stream(websocket: WebSocket, session_id: str):
         while True:
             # Receive video frame (Base64 string or binary) from candidate
             data = await websocket.receive_text()
+            
+            # Update last frame time in manager
+            stream_manager.update_last_frame_time(session_id)
             
             # 1. Forward the video frame IMMEDIATELY for lag-free video stream
             await stream_manager.broadcast_frame(session_id, data, sender=websocket)

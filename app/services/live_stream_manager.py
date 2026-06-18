@@ -13,6 +13,7 @@ class LiveStreamManager:
             # Maps session_id -> list of active websockets (candidate + recruiters)
             cls._instance.active_connections = {}
             cls._instance.proctoring_states = {}
+            cls._instance.last_frame_times = {}
         return cls._instance
 
     def get_proctoring_state(self, session_id: str) -> dict:
@@ -22,6 +23,19 @@ class LiveStreamManager:
                 "last_detection_time": 0.0
             }
         return self.proctoring_states[session_id]
+
+    def update_last_frame_time(self, session_id: str):
+        import time
+        self.last_frame_times[session_id] = time.time()
+
+    def get_active_sessions(self) -> List[str]:
+        import time
+        current_time = time.time()
+        active = []
+        for session_id, last_time in list(self.last_frame_times.items()):
+            if current_time - last_time < 10.0:
+                active.append(session_id)
+        return active
 
     async def connect(self, session_id: str, websocket: WebSocket):
         await websocket.accept()
@@ -36,6 +50,8 @@ class LiveStreamManager:
                 self.active_connections[session_id].remove(websocket)
             if not self.active_connections[session_id]:
                 del self.active_connections[session_id]
+                if session_id in self.last_frame_times:
+                    del self.last_frame_times[session_id]
                 logger.info(f"WebSocket disconnected for session: {session_id}. No active connections left.")
             else:
                 logger.info(f"WebSocket disconnected for session: {session_id}. Active connections remaining: {len(self.active_connections[session_id])}")
