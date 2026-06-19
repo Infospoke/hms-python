@@ -7,13 +7,20 @@ from sqlmodel import Session, select
 from datetime import datetime
 from app.db.session import get_session
 from app.models import (
-    Jobs,
-    JobDetails,
+    CreateJobDetails,
+    JobDescription,
     JobApplications,
     ResumeAnalysis,
     InterviewAnalysis,
     StatusEnum,
 )
+
+class JobMetaWrapper:
+    def __init__(self, create_job_details):
+        self.job_title = create_job_details.job_title if create_job_details else None
+        self.job_code = create_job_details.job_code if create_job_details else None
+        self.job_location = create_job_details.location if create_job_details else None
+        self.job_country = create_job_details.country if create_job_details else None
 from app.services.reports.job_applicants_report import generate_applicants_pdf
 from sqlmodel import Session, select
 from app import models
@@ -60,16 +67,12 @@ def generate_pdf_report(
         job_details = None
         if job_app.job_id:
             job_details = session.exec(
-                select(models.JobDetails).where(
-                    models.JobDetails.job_id == job_app.job_id
+                select(models.CreateJobDetails).where(
+                    models.CreateJobDetails.job_id == job_app.job_id
                 )
             ).first()
 
-        job_meta = None
-        if job_app.job_id:
-            job_meta = session.exec(
-                select(models.Jobs).where(models.Jobs.job_id == job_app.job_id)
-            ).first()
+        job_meta = JobMetaWrapper(job_details) if job_details else None
 
         resume_analysis = session.exec(
             select(models.ResumeAnalysis).where(
@@ -163,37 +166,22 @@ async def generate_applicants_report(
     job_id: int, session: Session = Depends(get_session)
 ):
     try:
-        # Try finding in JobDetails first (as applications usually link to its ID)
+        # Try finding in CreateJobDetails
         job_details = session.exec(
-            select(JobDetails).where(JobDetails.job_id == job_id)
+            select(CreateJobDetails).where(CreateJobDetails.job_id == job_id)
         ).first()
-        job = session.exec(select(Jobs).where(Jobs.job_id == job_id)).first()
 
         logger.warning(f"DEBUG - Job ID: {job_id}")
         logger.warning(f"DEBUG - JobDetails: {job_details}")
-        logger.warning(f"DEBUG - JobMaster: {job}")
 
         if not job_details:
-            # Fallback to Jobs table
-            job_master = session.exec(select(Jobs).where(Jobs.job_id == job_id)).first()
-            if not job_master:
-                raise HTTPException(status_code=404, detail="Job/Details not found")
-            job_title = job_master.job_title
-            location = job_master.job_location
-            employment_type = job_master.job_type
-            # If we only have job_master, applications might still be linked to a JobDetails entry
-            # that has job_master.job_id
-            job_details = session.exec(
-                select(JobDetails).where(JobDetails.job_id == job_id)
-            ).first()
-        else:
-            job_title = job.job_title
-            # Try to get more info from master Jobs table
-            job_master = session.exec(
-                select(Jobs).where(Jobs.job_id == job_details.job_id)
-            ).first()
-            location = job_master.job_location if job_master else "Unknown Location"
-            employment_type = job_master.job_type if job_master else "Full-time"
+            raise HTTPException(status_code=404, detail="Job/Details not found")
+
+        job_title = job_details.job_title
+        location = job_details.location or "Unknown Location"
+        employment_type = job_details.employment_type or "Full-time"
+        
+        job_master = job_details
 
         # Applications could be linked to either JobDetails.id or Jobs.job_id
         applications = session.exec(
@@ -384,8 +372,8 @@ async def generate_applicants_report(
             job_master.job_code if job_master and job_master.job_code else "N/A"
         )
         date_posted = (
-            job_master.created_date.strftime("%d %b %Y")
-            if job_master and job_master.created_date
+            job_master.created_at.strftime("%d %b %Y")
+            if job_master and getattr(job_master, "created_at", None)
             else "N/A"
         )
 

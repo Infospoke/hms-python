@@ -457,19 +457,13 @@ def add_interview_details(results_db, session):
 
         if job_application:
             job_details = session.exec(
-                select(models.JobDetails).where(
-                    models.JobDetails.job_id == job_application.job_id
+                select(models.CreateJobDetails).where(
+                    models.CreateJobDetails.job_id == job_application.job_id
                 )
             ).first()
 
             if job_details:
-                job = session.exec(
-                    select(models.Jobs).where(
-                        models.Jobs.job_id == job_application.job_id
-                    )
-                ).first()
-                result["job_title"] = job.job_title
-                # result["job_title"] = job_details.job_title
+                result["job_title"] = job_details.job_title
                 result["job_id"] = job_details.job_id
             else:
                 result["job_title"] = None

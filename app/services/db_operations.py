@@ -751,9 +751,9 @@ def get_interview_context(
                 f"Job application {interview_analysis.application_id} not found"
             )
             return None
-        job_details = session.exec(
-            select(models.JobDetails).where(
-                models.JobDetails.job_id == job_application.job_id
+        create_job_details = session.exec(
+            select(models.CreateJobDetails).where(
+                models.CreateJobDetails.job_id == job_application.job_id
             )
         ).first()
         resume_analysis = session.exec(
@@ -777,24 +777,89 @@ def get_interview_context(
                 resume_text = ""
         from app.utils.utils import construct_job_description_for_llm
 
-        job = session.exec(
-            select(models.Jobs).where(models.Jobs.job_id == job_details.job_id)
+        job_desc_record = session.exec(
+            select(models.JobDescription).where(
+                models.JobDescription.job_id == create_job_details.job_id
+            )
         ).first()
 
+        # Extract values
+        job_title = create_job_details.job_title
+
+        # Combine work details as job info
+        info_parts = []
+        if create_job_details.location:
+            info_parts.append(create_job_details.location)
+        if create_job_details.country:
+            info_parts.append(create_job_details.country)
+        if create_job_details.work_mode:
+            info_parts.append(create_job_details.work_mode)
+        if create_job_details.employment_type:
+            info_parts.append(create_job_details.employment_type)
+        job_info = ", ".join(info_parts) if info_parts else None
+
+        # Extract job_description
+        job_description = ""
+        if job_desc_record and job_desc_record.description:
+            if isinstance(job_desc_record.description, list):
+                desc_parts = []
+                for item in job_desc_record.description:
+                    if isinstance(item, dict):
+                        title = item.get("title") or item.get("section_title") or item.get("heading")
+                        content = item.get("content") or item.get("text") or item.get("value")
+                        if title and content:
+                            desc_parts.append(f"{title}: {content}")
+                        elif content:
+                            desc_parts.append(content)
+                        else:
+                            desc_parts.append(", ".join(f"{k}: {v}" for k, v in item.items() if v))
+                    elif isinstance(item, str):
+                        desc_parts.append(item)
+                job_description = "\n".join(desc_parts)
+            elif isinstance(job_desc_record.description, str):
+                job_description = job_desc_record.description
+
+        # Extract job_requirements
+        req_parts = []
+        if create_job_details.min_experience is not None or create_job_details.max_experience is not None:
+            exp_str = ""
+            if create_job_details.min_experience is not None and create_job_details.max_experience is not None:
+                exp_str = f"{create_job_details.min_experience} to {create_job_details.max_experience} years experience"
+            elif create_job_details.min_experience is not None:
+                exp_str = f"Minimum {create_job_details.min_experience} years experience"
+            else:
+                exp_str = f"Maximum {create_job_details.max_experience} years experience"
+            req_parts.append(exp_str)
+        if create_job_details.certifications_required:
+            req_parts.append(f"Certifications: {create_job_details.certifications_required}")
+        if create_job_details.languages:
+            req_parts.append(f"Languages: {create_job_details.languages}")
+        if create_job_details.additional_notes:
+            req_parts.append(f"Notes: {create_job_details.additional_notes}")
+        job_requirements = "\n".join(req_parts) if req_parts else None
+
+        # Extract qualification
+        qualification = create_job_details.education_requirements
+
+        # Extract skills
+        skills = create_job_details.skills_must_have
+        if create_job_details.nice_to_have_skills:
+            skills = f"{skills or ''}\nNice to have: {create_job_details.nice_to_have_skills}"
+
         job_description_for_llm = construct_job_description_for_llm(
-            job_title=get_job_title(session, job_details.job_id),
-            job_info=job.job_info,
-            job_description=job_details.job_description,
-            job_requirements=job_details.job_requirements,
-            qualification=job_details.qualification,
-            skills=job_details.skills,
+            job_title=job_title,
+            job_info=job_info,
+            job_description=job_description,
+            job_requirements=job_requirements,
+            qualification=qualification,
+            skills=skills,
         )
         context = {
-            "job_title": get_job_title(session, job_details.job_id),
+            "job_title": job_title,
             "job_description": job_description_for_llm,
-            "experience_level": resume_analysis.experience_level,
-            "skills": job_details.skills,
-            "interview_focus_areas": resume_analysis.interview_focus_areas,
+            "experience_level": resume_analysis.experience_level if resume_analysis else "Intermediate",
+            "skills": skills,
+            "interview_focus_areas": resume_analysis.interview_focus_areas if resume_analysis else [],
             "resume_text": resume_text,
         }
         return context
@@ -804,13 +869,11 @@ def get_interview_context(
 
 
 def get_job_title(session: Session, job_id: int):
-    job_title = (
-        session.exec(select(models.Jobs).where(models.Jobs.job_id == job_id))
+    create_job_details = (
+        session.exec(select(models.CreateJobDetails).where(models.CreateJobDetails.job_id == job_id))
         .first()
-        .job_title
     )
-
-    return job_title
+    return create_job_details.job_title if create_job_details else None
 
 
 def get_candidate_name(session: Session, application_id: int):

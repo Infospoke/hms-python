@@ -540,7 +540,7 @@ def update_final_candidate_decision(
         ).first()
 
         job = session.exec(
-            select(models.Jobs).where(models.Jobs.job_id == job_application.job_id)
+            select(models.CreateJobDetails).where(models.CreateJobDetails.job_id == job_application.job_id)
         ).first()
 
         comment = data.comment or ""
@@ -555,7 +555,7 @@ def update_final_candidate_decision(
             last_name=job_application.last_name,
             phone_number=job_application.ph_no,
             email=job_application.email,
-            job_country=job.job_country if job else None,
+            job_country=job.country if job else None,
             job_title=job.job_title if job else None,
             job_id=job_application.job_id,
         )
@@ -940,16 +940,12 @@ def start_interview_generation(interview_session_id: str, session: Session):
     session.add(interview_session)
 
     job_details = session.exec(
-        select(models.JobDetails)
+        select(models.CreateJobDetails)
         .join(
             models.JobApplications,
-            models.JobDetails.job_id == models.JobApplications.job_id,
+            models.CreateJobDetails.job_id == models.JobApplications.job_id,
         )
         .where(models.JobApplications.id == interview_session.application_id)
-    ).first()
-
-    job = session.exec(
-        select(models.Jobs).where(models.Jobs.job_id == job_details.job_id)
     ).first()
 
     structured_questions = []
@@ -994,20 +990,85 @@ def start_interview_generation(interview_session_id: str, session: Session):
             else:
                 resume_text = resume_text_response or "No resume text available."
 
+            # Combine work details as job info
+            info_parts = []
+            if job_details.location:
+                info_parts.append(job_details.location)
+            if job_details.country:
+                info_parts.append(job_details.country)
+            if job_details.work_mode:
+                info_parts.append(job_details.work_mode)
+            if job_details.employment_type:
+                info_parts.append(job_details.employment_type)
+            job_info = ", ".join(info_parts) if info_parts else None
+
+            # Fetch job description
+            job_desc_record = session.exec(
+                select(models.JobDescription).where(
+                    models.JobDescription.job_id == job_details.job_id
+                )
+            ).first()
+            job_description_str = ""
+            if job_desc_record and job_desc_record.description:
+                if isinstance(job_desc_record.description, list):
+                    desc_parts = []
+                    for item in job_desc_record.description:
+                        if isinstance(item, dict):
+                            title = item.get("title") or item.get("section_title") or item.get("heading")
+                            content = item.get("content") or item.get("text") or item.get("value")
+                            if title and content:
+                                desc_parts.append(f"{title}: {content}")
+                            elif content:
+                                desc_parts.append(content)
+                            else:
+                                desc_parts.append(", ".join(f"{k}: {v}" for k, v in item.items() if v))
+                        elif isinstance(item, str):
+                            desc_parts.append(item)
+                    job_description_str = "\n".join(desc_parts)
+                elif isinstance(job_desc_record.description, str):
+                    job_description_str = job_desc_record.description
+
+            # Combine requirements
+            req_parts = []
+            if job_details.min_experience is not None or job_details.max_experience is not None:
+                exp_str = ""
+                if job_details.min_experience is not None and job_details.max_experience is not None:
+                    exp_str = f"{job_details.min_experience} to {job_details.max_experience} years experience"
+                elif job_details.min_experience is not None:
+                    exp_str = f"Minimum {job_details.min_experience} years experience"
+                else:
+                    exp_str = f"Maximum {job_details.max_experience} years experience"
+                req_parts.append(exp_str)
+            if job_details.certifications_required:
+                req_parts.append(f"Certifications: {job_details.certifications_required}")
+            if job_details.languages:
+                req_parts.append(f"Languages: {job_details.languages}")
+            if job_details.additional_notes:
+                req_parts.append(f"Notes: {job_details.additional_notes}")
+            job_requirements = "\n".join(req_parts) if req_parts else None
+
+            # Extract qualification
+            qualification = job_details.education_requirements
+
+            # Extract skills
+            skills = job_details.skills_must_have
+            if job_details.nice_to_have_skills:
+                skills = f"{skills or ''}\nNice to have: {job_details.nice_to_have_skills}"
+
             job_description = utils.construct_job_description_for_llm(
                 job_title=db_operations.get_job_title(session, job_details.job_id),
-                job_info=job.job_info,
-                job_description=job_details.job_description,
-                job_requirements=job_details.job_requirements,
-                qualification=job_details.qualification,
-                skills=job_details.skills,
+                job_info=job_info,
+                job_description=job_description_str,
+                job_requirements=job_requirements,
+                qualification=qualification,
+                skills=skills,
             )
 
             technial_interviewer = AIInterviewer(
                 job_role=db_operations.get_job_title(session, job_details.job_id),
                 job_description=job_description,
                 experience=resume_analysis.experience_level,
-                skills=job_details.skills,
+                skills=skills,
                 topics=resume_analysis.interview_focus_areas,
                 resume_text=resume_text,
             )
@@ -1407,8 +1468,8 @@ def get_candidate_details(
             )
 
         job_details = session.exec(
-            select(models.JobDetails).where(
-                models.JobDetails.job_id == job_application.job_id
+            select(models.CreateJobDetails).where(
+                models.CreateJobDetails.job_id == job_application.job_id
             )
         ).first()
 
@@ -1645,23 +1706,14 @@ def generate_ai_questions(
             )
 
         job_details = session.exec(
-            select(models.JobDetails).where(
-                models.JobDetails.job_id == job_application.job_id
+            select(models.CreateJobDetails).where(
+                models.CreateJobDetails.job_id == job_application.job_id
             )
         ).first()
         if not job_details:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job details not found for job_id: {job_application.job_id}",
-            )
-
-        job = session.exec(
-            select(models.Jobs).where(models.Jobs.job_id == job_details.job_id)
-        ).first()
-        if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job not found for job_id: {job_details.job_id}",
+                detail=f"Job details not found in tb_create_job_details for job_id: {job_application.job_id}",
             )
 
         resume_parser = S3ResumeParser()
@@ -1671,20 +1723,85 @@ def generate_ai_questions(
         else:
             resume_text = resume_text_response or "No resume text available."
 
+        # Combine work details as job info
+        info_parts = []
+        if job_details.location:
+            info_parts.append(job_details.location)
+        if job_details.country:
+            info_parts.append(job_details.country)
+        if job_details.work_mode:
+            info_parts.append(job_details.work_mode)
+        if job_details.employment_type:
+            info_parts.append(job_details.employment_type)
+        job_info = ", ".join(info_parts) if info_parts else None
+
+        # Fetch job description
+        job_desc_record = session.exec(
+            select(models.JobDescription).where(
+                models.JobDescription.job_id == job_details.job_id
+            )
+        ).first()
+        job_description_str = ""
+        if job_desc_record and job_desc_record.description:
+            if isinstance(job_desc_record.description, list):
+                desc_parts = []
+                for item in job_desc_record.description:
+                    if isinstance(item, dict):
+                        title = item.get("title") or item.get("section_title") or item.get("heading")
+                        content = item.get("content") or item.get("text") or item.get("value")
+                        if title and content:
+                            desc_parts.append(f"{title}: {content}")
+                        elif content:
+                            desc_parts.append(content)
+                        else:
+                            desc_parts.append(", ".join(f"{k}: {v}" for k, v in item.items() if v))
+                    elif isinstance(item, str):
+                        desc_parts.append(item)
+                job_description_str = "\n".join(desc_parts)
+            elif isinstance(job_desc_record.description, str):
+                job_description_str = job_desc_record.description
+
+        # Combine requirements
+        req_parts = []
+        if job_details.min_experience is not None or job_details.max_experience is not None:
+            exp_str = ""
+            if job_details.min_experience is not None and job_details.max_experience is not None:
+                exp_str = f"{job_details.min_experience} to {job_details.max_experience} years experience"
+            elif job_details.min_experience is not None:
+                exp_str = f"Minimum {job_details.min_experience} years experience"
+            else:
+                exp_str = f"Maximum {job_details.max_experience} years experience"
+            req_parts.append(exp_str)
+        if job_details.certifications_required:
+            req_parts.append(f"Certifications: {job_details.certifications_required}")
+        if job_details.languages:
+            req_parts.append(f"Languages: {job_details.languages}")
+        if job_details.additional_notes:
+            req_parts.append(f"Notes: {job_details.additional_notes}")
+        job_requirements = "\n".join(req_parts) if req_parts else None
+
+        # Extract qualification
+        qualification = job_details.education_requirements
+
+        # Extract skills
+        skills = job_details.skills_must_have
+        if job_details.nice_to_have_skills:
+            skills = f"{skills or ''}\nNice to have: {job_details.nice_to_have_skills}"
+
         job_description = utils.construct_job_description_for_llm(
             job_title=db_operations.get_job_title(session, job_details.job_id),
-            job_info=job.job_info,
-            job_description=job_details.job_description,
-            job_requirements=job_details.job_requirements,
-            qualification=job_details.qualification,
-            skills=job_details.skills,
+            job_info=job_info,
+            job_description=job_description_str,
+            job_requirements=job_requirements,
+            qualification=qualification,
+            skills=skills,
         )
 
         technial_interviewer = AIInterviewer(
             job_role=db_operations.get_job_title(session, job_details.job_id),
             job_description=job_description,
             experience=resume_analysis.experience_level,
-            skills=job_details.skills,
+            skills=skills,
             topics=resume_analysis.interview_focus_areas,
             resume_text=resume_text,
         )

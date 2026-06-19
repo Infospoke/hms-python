@@ -3,7 +3,7 @@ from datetime import datetime, date
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Text, Column, String
 from app.utils import timezone_utils
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSON
 
 
 # --- Model Definitions ---
@@ -50,6 +50,44 @@ class JobDetails(SQLModel, table=(True)):
     skills: Optional[str] = Field(sa_column=Column(Text))
     updated_by: Optional[str] = Field(max_length=255)
     updated_date: Optional[datetime] = Field()
+
+class CreateJobDetails(SQLModel, table=True):
+    __tablename__ = "tb_create_job_details"
+
+    job_id: Optional[int] = Field(default=None, primary_key=True)
+    job_title: Optional[str] = None
+    role_id: Optional[int] = Field(default=None, alias="role_Id")
+    business_unit: Optional[int] = Field(default=None)
+    department: Optional[int] = Field(default=None)
+    location: Optional[str] = None
+    country: Optional[str] = None
+    job_code: Optional[str] = Field(default=None, unique=True)
+    openings: Optional[int] = None
+    target_start_date: Optional[date] = None
+    work_mode: Optional[str] = None
+    employment_type: Optional[str] = None
+    skills_must_have: Optional[str] = Field(default=None,sa_column=Column(Text))
+    nice_to_have_skills: Optional[str] = Field(default=None,sa_column=Column(Text))
+    min_experience: Optional[int] = None
+    max_experience: Optional[int] = None
+    additional_notes: Optional[str] = Field(default=None,sa_column=Column(Text))
+    submit: bool = Field(default=False)
+    created_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)
+    is_open: Optional[bool] = None
+    education_requirements: Optional[str] = None
+    sr_id: Optional[str] = None
+    certifications_required: Optional[str] = Field(default=None,sa_column=Column(Text))
+    languages: Optional[str] = None
+    plan_id: Optional[int] = None
+
+class JobDescription(SQLModel, table=True):
+    __tablename__ = "tb_job_description"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    sr_id: Optional[str] = None
+    job_id: Optional[int] = None
+    description: Optional[List[dict]] = Field(default=None,sa_column=Column(JSON))
 
 
 class JobApplications(SQLModel, table=(True)):
