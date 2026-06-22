@@ -172,7 +172,7 @@ async def generate_applicants_report(
         ).first()
 
         logger.warning(f"DEBUG - Job ID: {job_id}")
-        logger.warning(f"DEBUG - JobDetails: {job_details}")
+        logger.warning(f"DEBUG - CreateJobDetails: {job_details}")
 
         if not job_details:
             raise HTTPException(status_code=404, detail="Job/Details not found")
@@ -183,12 +183,12 @@ async def generate_applicants_report(
         
         job_master = job_details
 
-        # Applications could be linked to either JobDetails.id or Jobs.job_id
+        # Applications could be linked to either CreateJobDetails.job_id or Jobs.job_id
         applications = session.exec(
             select(JobApplications).where(JobApplications.job_id == job_id)
         ).all()
 
-        # If none found, try the JobDetails.job_id (which maps to master Jobs)
+        # If none found, try the CreateJobDetails.job_id (which maps to master Jobs)
         if not applications and job_details and job_details.job_id:
             applications = session.exec(
                 select(JobApplications).where(

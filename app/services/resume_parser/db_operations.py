@@ -180,23 +180,23 @@ def create_or_update_resume_analysis_db(
                 skill_match_percentage=result.get("skills_analysis", dict()).get(
                     "skill_match_percentage", 0.0
                 ),
-                matching_skills=result.get("skills_analysis", dict()).get(
-                    "matching_skills", []
+                tb_matching_skills=result.get("skills_analysis", dict()).get(
+                    "tb_matching_skills", []
                 ),
-                missing_skills=result.get("skills_analysis", dict()).get(
-                    "missing_skills", []
+                tb_missing_skills=result.get("skills_analysis", dict()).get(
+                    "tb_missing_skills", []
                 ),
-                matching_experience=result.get("experience_analysis", dict()).get(
-                    "matching_experience", []
+                tb_matching_experience=result.get("experience_analysis", dict()).get(
+                    "tb_matching_experience", []
                 ),
-                experience_gaps=result.get("experience_analysis", dict()).get(
-                    "experience_gaps", []
+                tb_experience_gaps=result.get("experience_analysis", dict()).get(
+                    "tb_experience_gaps", []
                 ),
                 experience_level=result.get("experience_analysis", dict()).get(
                     "experience_level", ""
                 ),
-                education_highlights=result.get("education_analysis", dict()).get(
-                    "education_highlights", []
+                tb_education_highlights=result.get("education_analysis", dict()).get(
+                    "tb_education_highlights", []
                 ),
                 education_level=result.get("education_analysis", dict()).get(
                     "education_level", ""
@@ -214,10 +214,10 @@ def create_or_update_resume_analysis_db(
                 average_job_change=result.get("job_analysis", dict()).get(
                     "average_job_change", None
                 ),
-                strengths=result.get("assessment", dict()).get("strengths", []),
-                weaknesses=result.get("assessment", dict()).get("weaknesses", []),
-                red_flags=result.get("assessment", dict()).get("red_flags", []),
-                cultural_fit_indicators=result.get("assessment", dict()).get(
+                tb_strengths=result.get("assessment", dict()).get("tb_strengths", []),
+                tb_weaknesses=result.get("assessment", dict()).get("tb_weaknesses", []),
+                tb_red_flags=result.get("assessment", dict()).get("tb_red_flags", []),
+                tb_cultural_fit_indicators=result.get("assessment", dict()).get(
                     "cultural_fit_indications"
                 ),
                 salary_expectation_alignment=result.get("hiring_insights", dict()).get(
@@ -226,7 +226,7 @@ def create_or_update_resume_analysis_db(
                 onboarding_priority=result.get("hiring_insights", dict()).get(
                     "onboarding_priority", ""
                 ),
-                interview_focus_areas=result.get("hiring_insights", dict()).get(
+                tb_interview_focus_areas=result.get("hiring_insights", dict()).get(
                     "interview_foucs_areas", []
                 ),
                 processing_time=result.get("metadata", dict()).get(

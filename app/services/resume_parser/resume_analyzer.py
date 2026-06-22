@@ -384,13 +384,13 @@ class ResumeAnalyzer:
                 ),
             },
             "skills_analysis": {
-                "matching_skills": analysis.get("matching_skills", []),
-                "missing_skills": analysis.get("missing_skills", []),
+                "tb_matching_skills": analysis.get("tb_matching_skills", []),
+                "tb_missing_skills": analysis.get("tb_missing_skills", []),
                 "skill_match_percentage": self._safe_round(
-                    len(analysis.get("matching_skills", []))
+                    len(analysis.get("tb_matching_skills", []))
                     / max(
-                        len(analysis.get("matching_skills", []))
-                        + len(analysis.get("missing_skills", [])),
+                        len(analysis.get("tb_matching_skills", []))
+                        + len(analysis.get("tb_missing_skills", [])),
                         1,
                     )
                     * 100,
@@ -398,8 +398,8 @@ class ResumeAnalyzer:
                 ),
             },
             "experience_analysis": {
-                "matching_experience": analysis.get("matching_experience", []),
-                "experience_gaps": analysis.get("experience_gaps", []),
+                "tb_matching_experience": analysis.get("tb_matching_experience", []),
+                "tb_experience_gaps": analysis.get("tb_experience_gaps", []),
                 "experience_level": (
                     "Experienced"
                     if result.get("scores", {}).get("experience_relevance", 0) > 80
@@ -411,9 +411,9 @@ class ResumeAnalyzer:
                 ),
             },
                 "education_analysis": {
-                   "education_highlights": analysis.get("education_highlights", []),
-                    "matching_education": analysis.get("matching_education", []),
-                    "missing_education": analysis.get("missing_education", []),
+                   "tb_education_highlights": analysis.get("tb_education_highlights", []),
+                    "tb_matching_education": analysis.get("tb_matching_education", []),
+                    "tb_missing_education": analysis.get("tb_missing_education", []),
                      "education_level": (
                         "ADVANCED"
                         if result.get("scores", {}).get("education", 0) > 80
@@ -449,16 +449,16 @@ class ResumeAnalyzer:
                 ),
             },
             "assessment": {
-                "strengths": result.get("strengths", []),
-                "weaknesses": result.get("weaknesses", []),
-                "red_flags": analysis.get("red_flags", []),
-                "cultural_fit_indicators": analysis.get("cultural_fit_indicators", []),
+                "tb_strengths": result.get("tb_strengths", []),
+                "tb_weaknesses": result.get("tb_weaknesses", []),
+                "tb_red_flags": analysis.get("tb_red_flags", []),
+                "tb_cultural_fit_indicators": analysis.get("tb_cultural_fit_indicators", []),
             },
             "hiring_insights": {
                 "salary_expectation_alignment": analysis.get(
                     "salary_expectation_alignment", "MEDIUM"
                 ),
-                "interview_focus_areas": analysis.get("interview_focus_areas", []),
+                "tb_interview_focus_areas": analysis.get("tb_interview_focus_areas", []),
                 "onboarding_priority": (
                     "HIGH"
                     if result.get("recommendation") == "HIRE"

@@ -9,47 +9,47 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSON
 # --- Model Definitions ---
 
 
-class Jobs(SQLModel, table=True):
-    __tablename__ = "tb_jobs"
+# class Jobs(SQLModel, table=True):
+#     __tablename__ = "tb_jobs"
 
-    job_id: Optional[int] = Field(default=None, primary_key=True)
-    job_code: str = Field(max_length=255)
-    job_location: str = Field(max_length=255)
-    experience: str = Field(max_length=255)
-    job_type: str = Field(max_length=255)
-    job_info: str = Field(max_length=255)
-    job_title: str = Field(max_length=255)
-    created_by: str = Field(max_length=255)
-    created_date: Optional[datetime] = Field()
-    job_level: str = Field(max_length=255)
-    job_mode: str = Field(max_length=255)
-    job_country: str = Field(max_length=255)
+#     job_id: Optional[int] = Field(default=None, primary_key=True)
+#     job_code: str = Field(max_length=255)
+#     job_location: str = Field(max_length=255)
+#     experience: str = Field(max_length=255)
+#     job_type: str = Field(max_length=255)
+#     job_info: str = Field(max_length=255)
+#     job_title: str = Field(max_length=255)
+#     created_by: str = Field(max_length=255)
+#     created_date: Optional[datetime] = Field()
+#     job_level: str = Field(max_length=255)
+#     job_mode: str = Field(max_length=255)
+#     job_country: str = Field(max_length=255)
 
 
 class JobDescriptionRevisions(SQLModel, table=True):
     __tablename__ = "tb_job_description_revisions"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_jobs.job_id", index=True)
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id", index=True)
     revision_index: int = Field(index=True)
     job_description: str = Field(sa_column=Column(Text, nullable=False))
     update_parameter: Optional[str] = Field(default=None, max_length=100)
     created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)
 
 
-class JobDetails(SQLModel, table=(True)):
-    __tablename__ = "tb_job_details"
-    id: Optional[int] = Field(default=None, primary_key=True)
-    created_by: Optional[str] = Field(max_length=255)
-    # job_title: Optional[str] = Field(max_length=255)
-    created_date: Optional[datetime] = Field()
-    job_description: Optional[str] = Field(sa_column=Column(Text))
-    job_id: Optional[int] = Field(default=None, foreign_key="tb_jobs.job_id")
-    job_requirements: Optional[str] = Field(sa_column=Column(Text))
-    qualification: Optional[str] = Field(max_length=255)
-    skills: Optional[str] = Field(sa_column=Column(Text))
-    updated_by: Optional[str] = Field(max_length=255)
-    updated_date: Optional[datetime] = Field()
+# class JobDetails(SQLModel, table=(True)):
+#     __tablename__ = "tb_job_details"
+#     id: Optional[int] = Field(default=None, primary_key=True)
+#     created_by: Optional[str] = Field(max_length=255)
+#     # job_title: Optional[str] = Field(max_length=255)
+#     created_date: Optional[datetime] = Field()
+#     job_description: Optional[str] = Field(sa_column=Column(Text))
+#     job_id: Optional[int] = Field(default=None, foreign_key="tb_jobs.job_id")
+#     job_requirements: Optional[str] = Field(sa_column=Column(Text))
+#     qualification: Optional[str] = Field(max_length=255)
+#     skills: Optional[str] = Field(sa_column=Column(Text))
+#     updated_by: Optional[str] = Field(max_length=255)
+#     updated_date: Optional[datetime] = Field()
 
 class CreateJobDetails(SQLModel, table=True):
     __tablename__ = "tb_create_job_details"
@@ -100,7 +100,7 @@ class JobApplications(SQLModel, table=(True)):
     created_date: Optional[datetime] = Field()
     email: Optional[str] = Field(max_length=1000)
     first_name: Optional[str] = Field(max_length=1000)
-    job_id: Optional[int] = Field(default=None, foreign_key="tb_jobs.job_id")
+    job_id: Optional[int] = Field(default=None, foreign_key="tb_create_job_details.job_id")
     last_name: Optional[str] = Field(max_length=1000)
     ph_no: Optional[str] = Field(max_length=255)
     privacy_policy: Optional[bool] = Field()
@@ -178,7 +178,7 @@ class SkillCategories(SQLModel, table=True):
 class JobSkillWeightage(SQLModel, table=True):
     __tablename__ = "tb_job_skill_weightage"
     job_skill_id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_jobs.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
     skill_id: int = Field(foreign_key="tb_skills.skill_id")
     category_id: int = Field(foreign_key="tb_skill_categories.category_id")
     experience_level: int
@@ -198,7 +198,7 @@ class Questions(SQLModel, table=True):
 class InterviewQuestions(SQLModel, table=True):
     __tablename__ = "tb_interview_questions"
     interview_question_id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_jobs.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
     question_id: int = Field(foreign_key="tb_questions.question_id")
     assigned_weightage: int
 
@@ -256,7 +256,7 @@ class CandidateInfo(SQLModel, table=True):
     email: Optional[str] = Field(default=None, max_length=150)
     job_country: Optional[str] = Field(default=None, max_length=100)
     job_title: Optional[str] = Field(default=None, max_length=100)
-    job_id: int = Field(foreign_key="tb_jobs.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
     department: Optional[str] = Field(default=None, max_length=100)
     status: Optional[str] = Field(default=None, max_length=50)
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -351,7 +351,7 @@ class BGV(SQLModel, table=True):
 class RoleRequirement(SQLModel, table=True):
     __tablename__ = "tb_role_requirements"
     id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_jobs.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
     skill_title: str = Field(max_length=255)
     skill_description: str = Field(sa_column=Column(Text))
     is_mandatory: bool = Field(default=False)

@@ -200,7 +200,7 @@ class AnalysisWorker(threading.Thread):
                 job_description=context["job_description"],
                 experience=context["experience_level"],
                 skills=context["skills"],
-                topics=context["interview_focus_areas"],
+                topics=context["tb_interview_focus_areas"],
                 resume_text=context["resume_text"],
             )
 

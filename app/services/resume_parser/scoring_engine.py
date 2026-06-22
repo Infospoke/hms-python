@@ -59,8 +59,8 @@ class ScoringEngine:
                     "recommendation": "REJECT",
                 }
             analysis = llm_result["analysis"]
-            matching = analysis.get("matching_skills", [])
-            missing = analysis.get("missing_skills", [])
+            matching = analysis.get("tb_matching_skills", [])
+            missing = analysis.get("tb_missing_skills", [])
             required_count = len(matching) + len(missing)
             analysis["required_skills_count"] = required_count
             analysis["matched_skills_count"] = len(matching)
@@ -101,8 +101,8 @@ class ScoringEngine:
                 "scores": combined_scores,
                 "recommendation": recommendation,
                 "analysis": analysis,
-                "strengths": analysis.get("strengths", []),
-                "weaknesses": analysis.get("weaknesses", []),
+                "tb_strengths": analysis.get("tb_strengths", []),
+                "tb_weaknesses": analysis.get("tb_weaknesses", []),
                 "summary": analysis.get("summary", ""),
                 "processing_time": llm_result.get("processing_time", 0),
                 "metadata": updated_metadata,
@@ -136,24 +136,24 @@ class ScoringEngine:
             "education": 0,
             "keywords_match": 0,
             "overall_fit": 0,
-            "matching_skills": [],
-            "missing_skills": [],
-            "matching_experience": [],
-            "experience_gaps": [],
-            "education_highlights": [],
-            "matching_education": [],
-            "missing_education": [],
-            "strengths": [],
-            "weaknesses": [
+            "tb_matching_skills": [],
+            "tb_missing_skills": [],
+            "tb_matching_experience": [],
+            "tb_experience_gaps": [],
+            "tb_education_highlights": [],
+            "tb_matching_education": [],
+            "tb_missing_education": [],
+            "tb_strengths": [],
+            "tb_weaknesses": [
                 "Resume content is empty or too short for analysis"
             ],
             "growth_potential": 0,
-            "cultural_fit_indicators": [],
+            "tb_cultural_fit_indicators": [],
             "salary_expectation_alignment": "LOW",
             "recommendation": "REJECT",
             "recommendation_reason": "Insufficient resume data",
             "summary": "Resume has insufficient textual content. Please upload a text-based resume.",
-            "interview_focus_areas": [],
+            "tb_interview_focus_areas": [],
             "fresher": True,
             "first_job_start_year": 0,
             "last_job_end_year": 0,
@@ -173,8 +173,8 @@ class ScoringEngine:
             "scores": scores,
             "recommendation": "REJECT",
             "analysis": analysis,
-            "strengths": [],
-            "weaknesses": analysis["weaknesses"],
+            "tb_strengths": [],
+            "tb_weaknesses": analysis["tb_weaknesses"],
             "summary": analysis["summary"],
             "processing_time": 0,
             "metadata": metadata,

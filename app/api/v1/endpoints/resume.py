@@ -514,8 +514,8 @@ def add_interview_details(results_db, session):
 #         ).first()
 
 #         job_details = session.exec(
-#             select(models.JobDetails).where(
-#                 models.JobDetails.job_id == job_application.job_id
+#             select(models.CreateJobDetails).where(
+#                 models.CreateJobDetails.job_id == job_application.job_id
 #             )
 #         ).first()
 

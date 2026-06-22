@@ -1069,7 +1069,7 @@ def start_interview_generation(interview_session_id: str, session: Session):
                 job_description=job_description,
                 experience=resume_analysis.experience_level,
                 skills=skills,
-                topics=resume_analysis.interview_focus_areas,
+                topics=resume_analysis.tb_interview_focus_areas,
                 resume_text=resume_text,
             )
 
@@ -1802,7 +1802,7 @@ def generate_ai_questions(
             job_description=job_description,
             experience=resume_analysis.experience_level,
             skills=skills,
-            topics=resume_analysis.interview_focus_areas,
+            topics=resume_analysis.tb_interview_focus_areas,
             resume_text=resume_text,
         )
 
