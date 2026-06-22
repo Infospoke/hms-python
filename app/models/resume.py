@@ -83,7 +83,7 @@ class ResumeLogs(SQLModel, table=(True)):
 
 
 class ResumeAnalysisUpdate(SQLModel, table=True):
-    __tablename__ = "tb_resume_analysis_update"
+    __tablename__ = "tb_applicant_details"
 
     id: Optional[int] = Field(default=None, primary_key=True)
     job_id: int
