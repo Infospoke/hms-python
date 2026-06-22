@@ -186,11 +186,21 @@ class BatchAnalyzer:
                     select(models.CreateJobDetails).where(models.CreateJobDetails.job_id == job_id)
                 ).first()
                 if not create_job_details:
+                    error_msg = f"Job ID {job_id} related data was not present in the CreateJobDetails"
+                    logger.error(error_msg)
+                    from app.services.db_operations import log_resume_activity
                     for app in apps:
+                        log_resume_activity(
+                            session,
+                            app.id,
+                            "FAILED",
+                            error_msg,
+                            "BatchAnalyzer",
+                        )
                         all_results.append(
                             {
                                 "success": False,
-                                "error": consts.NO_JOB_DETAILS_FOUND_FOR_JOB_ID(job_id),
+                                "error": error_msg,
                                 "application_id": app.id,
                             }
                         )

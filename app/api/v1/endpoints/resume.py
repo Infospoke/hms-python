@@ -660,7 +660,33 @@ def analyze_resumes_batch(
         ).all()
         already_analyzed = []
         pending_analysis = []
+        missing_job_details = []
+        
         for app in applications_to_check:
+            # Check if job details exist
+            job_details_exist = session.exec(
+                select(models.CreateJobDetails).where(
+                    models.CreateJobDetails.job_id == app.job_id
+                )
+            ).first()
+            
+            if not job_details_exist:
+                error_msg = f"Job ID {app.job_id} related data was not present in the CreateJobDetails"
+                from app.services.db_operations import log_resume_activity
+                log_resume_activity(
+                    session,
+                    app.id,
+                    "FAILED",
+                    error_msg,
+                    "BatchAnalyzer",
+                )
+                missing_job_details.append({
+                    "application_id": app.id,
+                    "job_id": app.job_id,
+                    "error": error_msg
+                })
+                continue
+
             existing_analysis = session.exec(
                 select(models.ResumeAnalysis).where(
                     models.ResumeAnalysis.application_id == app.id,
@@ -671,28 +697,46 @@ def analyze_resumes_batch(
                 already_analyzed.append(app.id)
             else:
                 pending_analysis.append(app.id)
-        if (
-            len(already_analyzed) == len(applications_to_check)
-            and len(applications_to_check) > 0
-        ):
+
+        if not pending_analysis:
+            if missing_job_details:
+                return {
+                    "message": f"Resume analysis could not be queued. {missing_job_details[0]['error']}",
+                    "success": False,
+                    "errors": missing_job_details,
+                    "files_not_found": [],
+                }
+            if already_analyzed:
+                return {
+                    "message": consts.RESUME_BATCH_ALREADY_ANALYZED,
+                    "success": False,
+                    "files_not_found": [],
+                }
             return {
-                "message": consts.RESUME_BATCH_ALREADY_ANALYZED,
+                "message": consts.NO_APPLICATIONS_PROVIDED,
                 "success": False,
                 "files_not_found": [],
             }
-        batch_analyzer = BatchAnalyzer(background_tasks)
-        if pending_analysis:
-            background_tasks.add_task(
-                batch_analyzer.analyze_job_applications_batch,
-                pending_analysis,
-                data.batch_id,
-            )
 
-        return {
+        batch_analyzer = BatchAnalyzer(background_tasks)
+        background_tasks.add_task(
+            batch_analyzer.analyze_job_applications_batch,
+            pending_analysis,
+            data.batch_id,
+        )
+
+        response_payload = {
             "message": "Resume analysis queued successfully. Please verify the results in the Application Tracking System in a minute",
             "success": True,
             "files_not_found": [],
         }
+        if missing_job_details:
+            response_payload["errors"] = missing_job_details
+            response_payload["message"] = (
+                f"Resume analysis queued for valid applications. However, some applications were skipped: "
+                f"{missing_job_details[0]['error']}"
+            )
+        return response_payload
     except ResourceNotFoundException as e:
         raise HTTPException(status_code=404, detail=e.message)
     except Exception as e:
