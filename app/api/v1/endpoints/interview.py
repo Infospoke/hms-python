@@ -1057,18 +1057,18 @@ def start_interview_generation(interview_session_id: str, session: Session):
 
             job_description = utils.construct_job_description_for_llm(
                 job_title=db_operations.get_job_title(session, job_details.job_id),
-                job_info=job.job_info,
-                job_description=job_details.additional_notes,
-                job_requirements=None,
-                qualification=job_details.education_requirements,
-                skills=job_details.skills_must_have,
+                job_info=job_info,
+                job_description=job_description_str,
+                job_requirements=job_requirements,
+                qualification=qualification,
+                skills=skills,
             )
 
             technial_interviewer = AIInterviewer(
                 job_role=db_operations.get_job_title(session, job_details.job_id),
                 job_description=job_description,
                 experience=resume_analysis.experience_level,
-                skills=job_details.skills_must_have,
+                skills=skills,
                 topics=resume_analysis.interview_focus_areas,
                 resume_text=resume_text,
             )
@@ -1716,14 +1716,7 @@ def generate_ai_questions(
                 detail=f"Create job details not found for job_id: {job_application.job_id}",
             )
 
-        job = session.exec(
-            select(models.Jobs).where(models.Jobs.job_id == job_details.job_id)
-        ).first()
-        if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job not found for job_id: {job_details.job_id}",
-            )
+
 
         resume_parser = S3ResumeParser()
         resume_text_response = resume_parser.extract_text(resume_analysis.file_path)
@@ -1799,18 +1792,18 @@ def generate_ai_questions(
 
         job_description = utils.construct_job_description_for_llm(
             job_title=db_operations.get_job_title(session, job_details.job_id),
-            job_info=job.job_info,
-            job_description=job_details.additional_notes,
-            job_requirements=None,
-            qualification=job_details.education_requirements,
-            skills=job_details.skills_must_have,
+            job_info=job_info,
+            job_description=job_description_str,
+            job_requirements=job_requirements,
+            qualification=qualification,
+            skills=skills,
         )
 
         technial_interviewer = AIInterviewer(
             job_role=db_operations.get_job_title(session, job_details.job_id),
             job_description=job_description,
             experience=resume_analysis.experience_level,
-            skills=job_details.skills_must_have,
+            skills=skills,
             topics=resume_analysis.interview_focus_areas,
             resume_text=resume_text,
         )
