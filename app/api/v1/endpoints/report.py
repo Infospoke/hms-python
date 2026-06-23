@@ -473,16 +473,6 @@ async def generate_service_requisition_report_endpoint(
             else None
         )
 
-        sourcing_entity = (
-            session.exec(
-                select(models.SourcingEntity).where(
-                    models.SourcingEntity.sr_id == sr_id
-                )
-            ).first()
-            if sr_id
-            else None
-        )
-
         business_unit = None
         if sr_position.business_unit:
             business_unit = session.exec(
