@@ -331,7 +331,7 @@ class GenerateAIQuestionsResponse(BaseModel):
 
 
 class UpdateMoveToScheduleRequest(BaseModel):
-    interview_session_id: str
+    application_id: int
     move_to_schedule: bool
 
 

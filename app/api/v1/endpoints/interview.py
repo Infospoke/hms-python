@@ -1278,11 +1278,11 @@ def update_move_to_schedule(
     """
     Update the move_to_schedule status for an interview session.
     """
-    logger.info(f"update-move-to-schedule for session {data.interview_session_id} to {data.move_to_schedule}")
+    logger.info(f"update-move-to-schedule for application_id {data.application_id} to {data.move_to_schedule}")
     
     interview_session = session.exec(
         select(models.InterviewSessions).where(
-            models.InterviewSessions.interview_session_id == data.interview_session_id
+            models.InterviewSessions.application_id == data.application_id
         )
     ).first()
 
@@ -1306,6 +1306,7 @@ def update_move_to_schedule(
         "success": True,
         "message": f"Successfully updated move_to_schedule to {data.move_to_schedule}",
         "interview_session_id": interview_session.interview_session_id,
+        "application_id": interview_session.application_id,
         "move_to_schedule": interview_session.move_to_schedule,
         "move_to_schedule_datetime": interview_session.move_to_schedule_datetime,
     }
