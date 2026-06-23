@@ -327,26 +327,6 @@ class GenerateAIQuestionsResponse(BaseModel):
     questions: List[GeneratedQuestionItem]
 
 
-# --- Custom Questions CRUD ---
-class AddCustomQuestionRequest(BaseModel):
-    application_id: int
-    question: str
-    question_type: str = "technical"
-    difficulty_level: str = "Medium"
-    expected_time: str = "2-3 mins"
 
-
-class UpdateCustomQuestionRequest(BaseModel):
-    application_id: int
-    question_id: int
-    question: Optional[str] = None
-    question_type: Optional[str] = None
-    difficulty_level: Optional[str] = None
-    expected_time: Optional[str] = None
-
-
-class DeleteCustomQuestionRequest(BaseModel):
-    application_id: int
-    question_id: int
 
 
