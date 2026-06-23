@@ -330,6 +330,27 @@ class GenerateAIQuestionsResponse(BaseModel):
     questions: List[GeneratedQuestionItem]
 
 
+class UpdateMoveToScheduleRequest(BaseModel):
+    interview_session_id: str
+    move_to_schedule: bool
+
+
+class FinalizeQuestionsRequest(BaseModel):
+    application_id: int
+    questions: List[Any]
+    min_pass_percentage: Optional[int] = None
+    acceptable_score_range: Optional[str] = None
+
+
+class FinalizeQuestionsResponse(BaseModel):
+    success: bool
+    message: str
+    application_id: int
+    questions_count: int
+    finalized_at: datetime
+
+
+
 
 
 
