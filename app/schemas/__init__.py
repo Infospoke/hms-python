@@ -382,9 +382,8 @@ class FinalizeQuestionsResponse(BaseModel):
     finalized_at: datetime
 
 
-class UpdateMoveToScheduleRequest(BaseModel):
-    interview_session_id: str
-    move_to_schedule: bool
+class MoveToScheduleRequest(BaseModel):
+    application_id : int
 
 
 

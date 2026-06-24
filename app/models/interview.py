@@ -43,8 +43,8 @@ class InterviewSessions(SQLModel, table=(True)):
     scheduled_time: Optional[datetime] = Field(default=None)
     is_scheduled: bool = Field(default=False)
     schedule_email_sent: bool = Field(default=False)
-    status: InterviewSessionStatusEnum = Field(
-        default=InterviewSessionStatusEnum.scheduled, max_length=20
+    status: Optional[InterviewSessionStatusEnum] = Field(
+        default=None, max_length=20, nullable=True
     )
     is_deleted: bool = Field(default=False)
     exam_exit_password: str = Field(max_length=255)

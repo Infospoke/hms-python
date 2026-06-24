@@ -639,7 +639,7 @@ class ResumeAnalyzer:
                                 application_id=application_id,
                                 question_type="AI",
                                 exam_exit_password="",
-                                status=models.InterviewSessionStatusEnum.scheduled,
+                                status=None,
                                 job_id=job_app.job_id if job_app else None,
                             )
                             self.session.add(new_session)
