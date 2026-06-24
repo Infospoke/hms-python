@@ -144,7 +144,8 @@ def fetch_resume_analysis(
 
 @router.post("/analysis/update")
 def fetch_resume_analysis_update(
-    application_id: Optional[int] = None,
+    application_id: Optional[int] = Query(None),
+    request_data: Optional[Dict[str, Any]] = Body(None),
     session: Session = Depends(deps.get_session),
 ):
     try:
