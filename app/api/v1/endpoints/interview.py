@@ -158,7 +158,7 @@ def create_interview_session(
             application_id=data.application_id,
             question_type=data.question_type,
             exam_exit_password="",
-            status=models.InterviewSessionStatusEnum.scheduled,
+            status=None,
         )
 
         interview_analysis = models.InterviewAnalysis(
@@ -291,9 +291,9 @@ def schedule_interview(
         interview_session.scheduled_time = slot_dt
         interview_session.is_scheduled = True
         interview_session.schedule_email_sent = False  # Ensure worker picks it up
-        interview_session.status = models.InterviewSessionStatusEnum.scheduled
+        interview_session.status = models.InterviewSessionStatusEnum.upcoming
         interview_session.interview_scheduled_datetime = timezone_utils.get_ist_now()
-        interview_session.scheduled_by = "candidate"
+        interview_session.scheduled_by = "applicant"
 
         session.add(interview_session)
         session.commit()
@@ -404,62 +404,6 @@ def admin_schedule_interview(
             )
         ).first()
 
-        if not interview_session:
-            logger.info(
-                f"No interview session found for application_id {data.application_id}. "
-                "Auto-creating one before scheduling."
-            )
-
-            job_application = session.exec(
-                select(models.JobApplications).where(
-                    models.JobApplications.id == data.application_id
-                )
-            ).first()
-
-            if not job_application:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Job application not found for application_id: {data.application_id}",
-                )
-
-            interview_session_id = str(uuid4())
-
-            interview_session = models.InterviewSessions(
-                interview_session_id=interview_session_id,
-                application_id=data.application_id,
-                question_type=data.question_type,
-                exam_exit_password="",
-                status=models.InterviewSessionStatusEnum.scheduled,
-            )
-
-            session.add(interview_session)
-            session.flush()
-
-            # Only create InterviewAnalysis if one doesn't already exist
-            existing_analysis = session.exec(
-                select(models.InterviewAnalysis).where(
-                    models.InterviewAnalysis.application_id == data.application_id,
-                )
-            ).first()
-
-            if not existing_analysis:
-                interview_analysis = models.InterviewAnalysis(
-                    application_id=data.application_id,
-                    interview_session_id=interview_session_id,
-                    status=models.StatusEnum.not_started,
-                    questions=[],
-                    job_id=job_application.job_id,
-                )
-                session.add(interview_analysis)
-
-            session.commit()
-            session.refresh(interview_session)
-
-            logger.info(
-                f"Auto-created interview session {interview_session_id} "
-                f"for application_id {data.application_id}"
-            )
-
         # --- Schedule the interview ---
         dt_str = f"{data.scheduled_date} {data.scheduled_time}"
         slot_dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
@@ -467,7 +411,7 @@ def admin_schedule_interview(
         interview_session.scheduled_time = slot_dt
         interview_session.is_scheduled = True
         interview_session.schedule_email_sent = False
-        interview_session.status = models.InterviewSessionStatusEnum.scheduled
+        interview_session.status = models.InterviewSessionStatusEnum.upcoming
         interview_session.interview_scheduled_datetime = timezone_utils.get_ist_now()
         interview_session.scheduled_by = "recruiter"
         
@@ -1270,15 +1214,16 @@ async def submit_answers(
         )
 
 
-@router.post("/update-move-to-schedule")
-def update_move_to_schedule(
-    data: UpdateMoveToScheduleRequest,
+@router.post("/move-to-schedule")
+def move_to_schedule(
+    data: MoveToScheduleRequest,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(deps.get_session),
 ):
     """
     Update the move_to_schedule status for an interview session.
     """
-    logger.info(f"update-move-to-schedule for application_id {data.application_id} to {data.move_to_schedule}")
+    logger.info(f"move-to-schedule for session {data.application_id}")
     
     interview_session = session.exec(
         select(models.InterviewSessions).where(
@@ -1292,23 +1237,25 @@ def update_move_to_schedule(
             detail="Interview session not found.",
         )
 
-    interview_session.move_to_schedule = data.move_to_schedule
-    if data.move_to_schedule:
-        interview_session.move_to_schedule_datetime = timezone_utils.get_ist_now()
-    else:
-        interview_session.move_to_schedule_datetime = None
-        
+    interview_session.move_to_schedule = True
+    interview_session.move_to_schedule_datetime = timezone_utils.get_ist_now()
+    interview_session.status = models.InterviewSessionStatusEnum.scheduled
+
+    try:
+        interview_emails.send_interview_invitation(
+            interview_session, background_tasks, session
+        )
+        logger.info(f"Successfully scheduled and sent interview invite email to candidate for session {interview_session.interview_session_id}")
+    except Exception as e:
+        logger.error(f"Failed to send interview invitation email for session {interview_session.interview_session_id}: {e}")
+
     session.add(interview_session)
     session.commit()
     session.refresh(interview_session)
     
     return {
         "success": True,
-        "message": f"Successfully updated move_to_schedule to {data.move_to_schedule}",
-        "interview_session_id": interview_session.interview_session_id,
-        "application_id": interview_session.application_id,
-        "move_to_schedule": interview_session.move_to_schedule,
-        "move_to_schedule_datetime": interview_session.move_to_schedule_datetime,
+        "message": f"Successfully moved to schedule for application {data.application_id}",
     }
 
 

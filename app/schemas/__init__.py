@@ -350,7 +350,8 @@ class FinalizeQuestionsResponse(BaseModel):
     finalized_at: datetime
 
 
-
+class MoveToScheduleRequest(BaseModel):
+    application_id : int
 
 
 

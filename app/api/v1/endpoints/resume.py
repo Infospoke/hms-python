@@ -427,8 +427,8 @@ def add_interview_details(results_db, session):
         
         scheduled_by = interview_session.scheduled_by if (interview_session and interview_session.scheduled_by) else None
         result["scheduled_by"] = scheduled_by
-        if scheduled_by == "candidate":
-            result["scheduled_by_display"] = "Candidate (Self Scheduled)"
+        if scheduled_by in ("applicant", "candidate"):
+            result["scheduled_by_display"] = "Applicant (Self Scheduled)"
         elif scheduled_by == "recruiter":
             result["scheduled_by_display"] = "Recruiter (On Behalf)"
         else:
