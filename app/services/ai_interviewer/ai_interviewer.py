@@ -170,6 +170,13 @@ Generate exactly {count} interview questions.
 
 Each question must be tailored to the candidate's background and the job description.
 
+**VARIETY, UNIQUENESS & DIVERSITY:**
+- Ensure all questions are **highly unique, distinct, and creative**.
+- Do not repeat the same question or ask similar questions across different types.
+- AVOID generic or textbook questions.
+- Every time this generator runs, it must produce a completely different set of questions.
+- Context ID: {uuid.uuid4()}
+
 **CRITICAL GUIDELINES - QUESTION STRUCTURE:**
 1. **SINGLE QUESTION CONSTRAINT:** Each generated question MUST contain exactly ONE question mark. Keep the wording punchy and concise (maximum 20-30 words).
 2. **TTS-Friendly Formatting:** Avoid parentheses, brackets, or abbreviations (e.g., use "for example" instead of "e.g.").

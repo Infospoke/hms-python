@@ -671,7 +671,7 @@ def fetch_interview_analysis(
                         if qna.ai_analysis and "relevance" in qna.ai_analysis
                         else (qna.ai_analysis.get("job_relevance") if qna.ai_analysis else None)
                     ),
-                    "completeness": (gog
+                    "completeness": (
                         qna.ai_analysis.get("completeness")
                         if qna.ai_analysis and "completeness" in qna.ai_analysis
                         else (qna.ai_analysis.get("domain_knowledge") if qna.ai_analysis else None)
@@ -1089,13 +1089,15 @@ def start_interview_generation(interview_session_id: str, session: Session):
             questions = technial_interviewer.generate_questions()
 
             structured_questions = []
+            technical_count = len(questions) // 2 if len(questions) % 2 == 0 else (len(questions) // 2 + 1)
             for idx, question in enumerate(questions):
+                q_type = "technical" if idx < technical_count else "behavioural"
                 structured_questions.append({
                     "question_id": idx + 1,
                     "question": question,
                     "expected_time": "2-3 mins",
                     "difficulty_level": "medium",
-                    "question_type": "technical"
+                    "question_type": q_type
                 })
 
             # Save generated questions to tb_ai_interview_questions for persistence
