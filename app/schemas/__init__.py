@@ -354,4 +354,5 @@ class MoveToScheduleRequest(BaseModel):
     application_id : int
 
 
-
+class CheckInterviewStatusRequest(BaseModel):
+    interview_session_id: str

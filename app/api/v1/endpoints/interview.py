@@ -1762,6 +1762,8 @@ def generate_ai_questions(
             question_types=data.question_type,
         )
 
+        print(f"\n\nGenerated questions_response: {questions_response}\n\n")
+
         # Standardize questions format in questions_response without saving to DB
         if questions_response and "questions" in questions_response:
             new_questions = []
@@ -1841,3 +1843,27 @@ def get_generated_ai_questions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while fetching AI questions.",
         )
+
+@router.post("/check-interview-schedule-status")
+def check_interview_schedule_status(
+    data: CheckInterviewStatusRequest,
+    session: Session = Depends(deps.get_session),
+):
+    interview_session_id = data.interview_session_id
+    logger.info(f"check-interview-schedule-status for interview_session_id: {interview_session_id}")
+    interview_session = session.exec(
+        select(models.InterviewSessions).where(
+            models.InterviewSessions.interview_session_id == interview_session_id
+        )
+    ).first()
+
+    if not interview_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview session not found for interview_session_id: {interview_session_id}",
+        )
+
+    return {
+        "is_scheduled": interview_session.is_scheduled,
+        "scheduled_time": interview_session.scheduled_time,
+    }
