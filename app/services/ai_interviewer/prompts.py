@@ -71,6 +71,10 @@ You MUST return **0 for ALL fields** if the answer matches ANY of these:
     "communication_clarity": <int 0-10>,
     "problem_solving": <int 0-10>,
     "job_relevance": <int 0-10>,
+    "relevance": <int 0-10 (score representing how directly the answer addresses the question)>,
+    "completeness": <int 0-10 (score representing how fully the answer covers all parts of the question)>,
+    "accuracy": <int 0-10 (score representing the correctness and validity of the information provided)>,
+    "clarity": <int 0-10 (score representing the structure, flow, and understandability of the answer)>,
     "relevant_answer": <true or false>,
     "feedback": "<Concise feedback. If 0, state clearly why (e.g. 'Answer was irrelevant').>"
 }}
