@@ -584,6 +584,41 @@ def fetch_interview_analysis(
             )
         ).first()
 
+        # Fetch question difficulty counts
+        easy_count = 0
+        medium_count = 0
+        hard_count = 0
+        total_questions = 0
+
+        ai_questions = session.exec(
+            select(models.AIInterviewQuestions).where(
+                models.AIInterviewQuestions.application_id == data.application_id
+            )
+        ).first()
+
+        questions_list = []
+        if ai_questions and ai_questions.questions:
+            questions_list = ai_questions.questions
+        elif interview_analysis and interview_analysis.questions:
+            questions_list = interview_analysis.questions
+
+        if questions_list:
+            total_questions = len(questions_list)
+            for q in questions_list:
+                if isinstance(q, dict):
+                    diff = str(q.get("difficulty_level") or "").strip().lower()
+                elif hasattr(q, "difficulty_level"):
+                    diff = str(getattr(q, "difficulty_level") or "").strip().lower()
+                else:
+                    diff = ""
+                
+                if diff == "easy":
+                    easy_count += 1
+                elif diff == "medium":
+                    medium_count += 1
+                elif diff == "hard":
+                    hard_count += 1
+
         scheduled_dt_api = (
             timezone_utils.format_datetime_for_api(
                 interview_session.interview_scheduled_datetime
@@ -611,6 +646,7 @@ def fetch_interview_analysis(
             "application_id": interview_analysis.application_id,
             "status": interview_analysis.status,
             "total_score": interview_analysis.total_score,
+            "average_ai_score": interview_analysis.total_score,
             "recommendation": interview_analysis.recommendation,
             "interview_timeline": interview_timeline,
             "candidate_name": (
@@ -619,7 +655,10 @@ def fetch_interview_analysis(
                 else "N/A"
             ),
             "candidate_email": job_application.email if job_application else "N/A",
-            "total_questions": len(interview_analysis.questions),
+            "total_questions": total_questions or len(interview_analysis.questions),
+            "easy_questions_count": easy_count,
+            "medium_questions_count": medium_count,
+            "hard_questions_count": hard_count,
             "qna_count": len(qna_analysis),
             "qna_analysis": [
                 {
@@ -627,6 +666,26 @@ def fetch_interview_analysis(
                     "question_text": qna.question_text,
                     "answer_text": qna.answer_text,
                     **(qna.ai_analysis if qna.ai_analysis else {}),
+                    "relevance": (
+                        qna.ai_analysis.get("relevance")
+                        if qna.ai_analysis and "relevance" in qna.ai_analysis
+                        else (qna.ai_analysis.get("job_relevance") if qna.ai_analysis else None)
+                    ),
+                    "completeness": (gog
+                        qna.ai_analysis.get("completeness")
+                        if qna.ai_analysis and "completeness" in qna.ai_analysis
+                        else (qna.ai_analysis.get("domain_knowledge") if qna.ai_analysis else None)
+                    ),
+                    "accuracy": (
+                        qna.ai_analysis.get("accuracy")
+                        if qna.ai_analysis and "accuracy" in qna.ai_analysis
+                        else (qna.ai_analysis.get("problem_solving") if qna.ai_analysis else None)
+                    ),
+                    "clarity": (
+                        qna.ai_analysis.get("clarity")
+                        if qna.ai_analysis and "clarity" in qna.ai_analysis
+                        else (qna.ai_analysis.get("communication_clarity") if qna.ai_analysis else None)
+                    ),
                     "created_at": (
                         timezone_utils.format_datetime_for_api(qna.created_at)
                         if qna.created_at
@@ -640,13 +699,23 @@ def fetch_interview_analysis(
                 {
                     "id": log.id,
                     "event_type": log.event_type,
+                    "violation_type": log.event_type,
                     "tb_severity": log.tb_severity or "low severity",
+                    "severity": log.tb_severity or "low severity",
                     "timestamp": (
                         timezone_utils.format_datetime_for_api(log.timestamp)
                         if log.timestamp
                         else None
                     ),
+                    "time": (
+                        timezone_utils.format_datetime_for_api(log.timestamp)
+                        if log.timestamp
+                        else None
+                    ),
                     "details": log.details,
+                    "description": log.details,
+                    "image": log.image_path,
+                    "image_path": log.image_path,
                     "image_base64": aws_helper.get_s3_image_base64(log.image_path),
                 }
                 for log in proctoring_logs
