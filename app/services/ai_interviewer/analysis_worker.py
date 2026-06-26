@@ -8,6 +8,7 @@ from app.core import config as consts
 from app.db.session import DATABASE_URL
 from app import models
 from app.utils import timezone_utils
+from sqlalchemy import and_
 
 logger = logging.getLogger(__name__)
 
@@ -371,6 +372,127 @@ class AnalysisWorker(threading.Thread):
                 activity=f"Interview completed for {candidate_name}",
             )
             session.add(activity_feed)
+
+            try:
+                job_id = interview_analysis.job_id
+                
+                job_details_row = session.exec(
+                    select(models.CreateJobDetails).where(                        
+                        models.CreateJobDetails.job_id == job_id
+                    )
+                ).first()
+                
+                if job_details_row and job_details_row.plan_id is not None:
+                    plan_id = job_details_row.plan_id
+
+                    all_plan_rounds = []
+                    
+                    all_plan_rounds_rows = session.exec(
+                        select(models.InterviewRound)
+                        .where(models.InterviewRound.interview_plan_id == plan_id)
+                        .order_by(models.InterviewRound.round_order.asc())
+                    ).all()
+                    
+                    for row in all_plan_rounds_rows:
+
+                        stage_val = row.stage_type_id
+                        
+                        all_plan_rounds.append({
+                            "id": row.id,
+                            "round_order": row.round_order,
+                            "stage_name": row.stage_name,
+                            "stage_type": row.stage_type,
+                            "stage_type_id": stage_val,
+                            "interview_plan_id": row.interview_plan_id
+                        })
+                    
+                    # Find the AI Interview round dynamically (robust check matching stage_type or stage_name)
+                    ai_round = None
+                    for r in all_plan_rounds:
+                        s_name = str(r.get("stage_name") or "").lower().replace(" ", "").replace("_", "")
+                        s_type = str(r.get("stage_type") or "").lower().replace(" ", "").replace("_", "")
+                        if "aiinterview" in s_name or "aiinterview" in s_type:
+                            ai_round = r
+                            break
+
+                    # Fallback to the first round in the plan if no AI round is found by name/type
+                    if not ai_round and all_plan_rounds:
+                        # ai_round = all_plan_rounds[0]
+                        logger.error(f"No AI round found in the interview plan {plan_id=}")
+                        return
+
+                    if ai_round:
+                        row_order = ai_round.get("round_order")
+
+                        # Query the next round in the plan
+                        next_interview_round = session.exec(
+                            select(models.InterviewRound).where(
+                                models.InterviewRound.interview_plan_id == plan_id,
+                                models.InterviewRound.round_order == row_order + 1
+                            )
+                        ).first()
+
+                        stage_id = None
+                        interviewer_id = None
+                        print(f"{next_interview_round=}")
+                        if next_interview_round:
+                            # Query the assignment for the next round
+                            from sqlalchemy import and_
+                            target_assignment = session.exec(
+                                select(models.InterviewAssignment).where(
+                                    and_(
+                                        models.InterviewAssignment.job_id == job_id,
+                                        models.InterviewAssignment.plan_id == plan_id,
+                                        models.InterviewAssignment.stage_type_id == next_interview_round.stage_type_id
+                                    )
+                                )
+                            ).first()
+
+                            if target_assignment:
+                                print(f"{target_assignment=}")
+                                if target_assignment.status and target_assignment.status.lower() == "accepted":
+                                    stage_id = next_interview_round.stage_type_id
+                                    interviewer_id = target_assignment.interviewer_user_id or target_assignment.user_id
+                                else:
+                                    # Fallback/default if status is not accepted (or we still want stage_id anyway)
+                                    stage_id = next_interview_round.stage_type_id
+                                    interviewer_id = target_assignment.interviewer_user_id or target_assignment.user_id
+                            else:
+                                # Fallback if no target assignment is found for that stage
+                                stage_id = next_interview_round.stage_type_id
+
+                        if stage_id is not None:
+                            current_stage = session.exec(
+                                select(models.InterviewCurrentStage).where(
+                                    models.InterviewCurrentStage.application_id == interview_analysis.application_id
+                                )
+                            ).first()
+                            
+                            if not current_stage:
+                                current_stage = models.InterviewCurrentStage(
+                                    application_id=interview_analysis.application_id
+                                )
+                                logger.info(f"Creating new InterviewCurrentStage record for application {interview_analysis.application_id}")
+                            
+                            current_stage.current_stage_type = stage_id
+                            current_stage.round_order = next_interview_round.round_order if next_interview_round else row_order
+                            current_stage.to_schedule = False
+                            current_stage.interviewer_id = interviewer_id
+                            
+                            current_stage.interview_completed = False
+                            current_stage.interview_completed_on = timezone_utils.get_ist_now()
+                            
+                            logger.info(
+                                f"Updating candidate {interview_analysis.application_id} current stage to next round stage {stage_id} "
+                                f"(round_order: {current_stage.round_order}, to_schedule: False, interviewer: {interviewer_id})"
+                            )
+                            session.add(current_stage)
+                        else:
+                            logger.warning(f"No stage_type_id found for plan_id {plan_id} and target round {ai_round.get('stage_name')}")
+                else:
+                    logger.warning(f"No plan_id found in tb_create_job_details for job_id {job_id}")
+            except Exception as db_err:
+                logger.error(f"Error updating current stage records: {db_err}", exc_info=True)
 
             session.add(interview_analysis)
             session.commit()

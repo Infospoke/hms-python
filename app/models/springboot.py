@@ -560,3 +560,78 @@ class UserType(SQLModel, table=True):
 
     user_type: Optional[str] = Field(default=None, max_length=255)
     user_type_id: Optional[int] = None
+
+
+class InterviewPlan(SQLModel, table=True):
+    __tablename__ = "tb_interview_plan"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_id: Optional[int] = Field(default=None)
+    plan_id: Optional[int] = Field(default=None)
+    sr_id: Optional[str] = Field(default=None, max_length=255)
+    user_id: Optional[int] = Field(default=None)
+    role_name: Optional[str] = Field(default=None, max_length=255)
+    plan_name: Optional[str] = Field(default=None, max_length=255)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    status: Optional[str] = Field(default=None, max_length=255)
+    approval_status: Optional[str] = Field(default=None, max_length=255)
+    created_by: Optional[str] = Field(default=None, max_length=255)
+    created_on: Optional[datetime] = Field(default=None)
+    request_type: Optional[str] = Field(default=None, max_length=255)
+    active_approval: Optional[bool] = Field(default=None)
+    deactive_approval: Optional[bool] = Field(default=None)
+    updated_by: Optional[str] = Field(default=None, max_length=255)
+    updated_at: Optional[datetime] = Field(default=None)
+
+
+class InterviewRound(SQLModel, table=True):
+    __tablename__ = "tb_interview_round"
+ 
+    id: Optional[int] = Field(default=None, primary_key=True)
+    round_order: Optional[int] = Field(default=None)
+    stage_name: Optional[str] = Field(default=None, max_length=255)
+    stage_type: Optional[str] = Field(default=None, max_length=255)
+    interview_mode: Optional[str] = Field(default=None, max_length=255)
+    mandatory: Optional[bool] = Field(default=None)
+    stage_type_id: Optional[int] = Field(default=None)
+    interview_plan_id: Optional[int] = Field(default=None)
+
+ 
+ 
+class InterviewCurrentStage(SQLModel, table=True):
+    __tablename__ = "tb_interview_current_stage"
+ 
+    id: Optional[int] = Field(default=None, primary_key=True)
+    interviewer_id: Optional[int] = Field(default=None)
+    application_id: Optional[int] = Field(default=None)
+    current_stage_type: Optional[int] = Field(default=None)
+    to_schedule: Optional[bool] = Field(default=None)
+    interview_completed: Optional[bool] = Field(default=None)
+    interview_completed_on: Optional[datetime] = Field(default=None)
+    interview_date: Optional[datetime] = Field(default=None)
+    feedback: Optional[bool] = Field(default=None)
+    round_order: Optional[int] = Field(default=None)
+
+
+class InterviewAssignment(SQLModel, table=True):
+    __tablename__ = "tb_interview_assignment"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_id: Optional[int] = Field(default=None)
+    plan_id: Optional[int] = Field(default=None)
+    round_id: Optional[int] = Field(default=None)
+    stage_type_id: Optional[int] = Field(default=None)
+    stage_name: Optional[str] = Field(default=None, max_length=255)
+    interviewer_user_id: Optional[int] = Field(default=None)
+    interviewer_name: Optional[str] = Field(default=None, max_length=255)
+    role_name: Optional[str] = Field(default=None, max_length=255)
+    status: Optional[str] = Field(default=None, max_length=255)
+    comments: Optional[str] = Field(default=None, sa_column=Column(Text))
+    responded_at: Optional[datetime] = Field(default=None)
+    created_by: Optional[str] = Field(default=None, max_length=255)
+    created_at: Optional[datetime] = Field(default=None)
+    job_title: Optional[str] = Field(default=None, max_length=255)
+    dept_name: Optional[str] = Field(default=None, max_length=255)
+    plan_name: Optional[str] = Field(default=None, max_length=255)
+    user_id: Optional[int] = Field(default=None)
+    priority: Optional[int] = Field(default=None)

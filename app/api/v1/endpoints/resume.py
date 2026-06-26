@@ -741,6 +741,8 @@ def analyze_resumes_batch(
     except ResourceNotFoundException as e:
         raise HTTPException(status_code=404, detail=e.message)
     except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error in analyze_resumes_batch: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=consts.INTERNAL_SERVER_ERROR)
 
 
