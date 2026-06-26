@@ -49,7 +49,7 @@ class InterviewSessions(SQLModel, table=(True)):
     is_deleted: bool = Field(default=False)
     exam_exit_password: str = Field(max_length=255)
     interview_scheduled_datetime: Optional[datetime] = Field(default=None)
-    job_id: int = Field(foreign_key="tb_job_details.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
     min_pass_percentage: Optional[int] = Field(default=None)
     acceptable_score_range: Optional[str] = Field(default=None, max_length=50)
     questions_status: bool = Field(default=False)
@@ -76,7 +76,7 @@ class InterviewAnalysis(SQLModel, table=(True)):
     final_decision: Optional[str] = Field(default="", max_length=20, nullable=True)
     email_sent: bool = Field(default=False)
     is_deleted: bool = Field(default=False)
-    job_id: int = Field(foreign_key="tb_job_details.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
     interview_analysis_date: Optional[datetime] = Field(default=None)
     interview_started_datetime: Optional[datetime] = Field(default=None)
 
@@ -126,4 +126,4 @@ class AIInterviewQuestions(SQLModel, table=(True)):
     question_type: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     questions: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    job_id: int = Field(foreign_key="tb_job_details.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")

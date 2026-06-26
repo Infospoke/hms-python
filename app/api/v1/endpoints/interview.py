@@ -484,7 +484,7 @@ def update_final_candidate_decision(
         ).first()
 
         job = session.exec(
-            select(models.Jobs).where(models.Jobs.job_id == job_application.job_id)
+            select(models.CreateJobDetails).where(models.CreateJobDetails.job_id == job_application.job_id)
         ).first()
 
         comment = data.comment or ""
@@ -499,7 +499,7 @@ def update_final_candidate_decision(
             last_name=job_application.last_name,
             phone_number=job_application.ph_no,
             email=job_application.email,
-            job_country=job.job_country if job else None,
+            job_country=job.country if job else None,
             job_title=job.job_title if job else None,
             job_id=job_application.job_id,
         )
@@ -953,16 +953,12 @@ def start_interview_generation(interview_session_id: str, session: Session):
     session.add(interview_session)
 
     job_details = session.exec(
-        select(models.JobDetails)
+        select(models.CreateJobDetails)
         .join(
             models.JobApplications,
-            models.JobDetails.job_id == models.JobApplications.job_id,
+            models.CreateJobDetails.job_id == models.JobApplications.job_id,
         )
         .where(models.JobApplications.id == interview_session.application_id)
-    ).first()
-
-    job = session.exec(
-        select(models.Jobs).where(models.Jobs.job_id == job_details.job_id)
     ).first()
 
     structured_questions = []
@@ -1007,21 +1003,86 @@ def start_interview_generation(interview_session_id: str, session: Session):
             else:
                 resume_text = resume_text_response or "No resume text available."
 
+            # Combine work details as job info
+            info_parts = []
+            if job_details.location:
+                info_parts.append(job_details.location)
+            if job_details.country:
+                info_parts.append(job_details.country)
+            if job_details.work_mode:
+                info_parts.append(job_details.work_mode)
+            if job_details.employment_type:
+                info_parts.append(job_details.employment_type)
+            job_info = ", ".join(info_parts) if info_parts else None
+
+            # Fetch job description
+            job_desc_record = session.exec(
+                select(models.JobDescription).where(
+                    models.JobDescription.job_id == job_details.job_id
+                )
+            ).first()
+            job_description_str = ""
+            if job_desc_record and job_desc_record.description:
+                if isinstance(job_desc_record.description, list):
+                    desc_parts = []
+                    for item in job_desc_record.description:
+                        if isinstance(item, dict):
+                            title = item.get("title") or item.get("section_title") or item.get("heading")
+                            content = item.get("content") or item.get("text") or item.get("value")
+                            if title and content:
+                                desc_parts.append(f"{title}: {content}")
+                            elif content:
+                                desc_parts.append(content)
+                            else:
+                                desc_parts.append(", ".join(f"{k}: {v}" for k, v in item.items() if v))
+                        elif isinstance(item, str):
+                            desc_parts.append(item)
+                    job_description_str = "\n".join(desc_parts)
+                elif isinstance(job_desc_record.description, str):
+                    job_description_str = job_desc_record.description
+
+            # Combine requirements
+            req_parts = []
+            if job_details.min_experience is not None or job_details.max_experience is not None:
+                exp_str = ""
+                if job_details.min_experience is not None and job_details.max_experience is not None:
+                    exp_str = f"{job_details.min_experience} to {job_details.max_experience} years experience"
+                elif job_details.min_experience is not None:
+                    exp_str = f"Minimum {job_details.min_experience} years experience"
+                else:
+                    exp_str = f"Maximum {job_details.max_experience} years experience"
+                req_parts.append(exp_str)
+            if job_details.certifications_required:
+                req_parts.append(f"Certifications: {job_details.certifications_required}")
+            if job_details.languages:
+                req_parts.append(f"Languages: {job_details.languages}")
+            if job_details.additional_notes:
+                req_parts.append(f"Notes: {job_details.additional_notes}")
+            job_requirements = "\n".join(req_parts) if req_parts else None
+
+            # Extract qualification
+            qualification = job_details.education_requirements
+
+            # Extract skills
+            skills = job_details.skills_must_have
+            if job_details.nice_to_have_skills:
+                skills = f"{skills or ''}\nNice to have: {job_details.nice_to_have_skills}"
+
             job_description = utils.construct_job_description_for_llm(
                 job_title=db_operations.get_job_title(session, job_details.job_id),
-                job_info=job.job_info,
-                job_description=job_details.job_description,
-                job_requirements=job_details.job_requirements,
-                qualification=job_details.qualification,
-                skills=job_details.skills,
+                job_info=job_info,
+                job_description=job_description_str,
+                job_requirements=job_requirements,
+                qualification=qualification,
+                skills=skills,
             )
 
             technial_interviewer = AIInterviewer(
                 job_role=db_operations.get_job_title(session, job_details.job_id),
                 job_description=job_description,
                 experience=resume_analysis.experience_level,
-                skills=job_details.skills,
-                topics=resume_analysis.interview_focus_areas,
+                skills=skills,
+                topics=resume_analysis.tb_interview_focus_areas,
                 resume_text=resume_text,
             )
 
@@ -1426,14 +1487,14 @@ def get_candidate_details(
             )
 
         job_details = session.exec(
-            select(models.JobDetails).where(
-                models.JobDetails.job_id == job_application.job_id
+            select(models.CreateJobDetails).where(
+                models.CreateJobDetails.job_id == job_application.job_id
             )
         ).first()
 
         full_name = job_application.first_name + " " + job_application.last_name
         email = job_application.email
-        job_title = db_operations.get_job_title(session, job_details.job_id)
+        job_title = db_operations.get_job_title(session, job_details.job_id) if job_details else None
 
         return {
             "message": "candidate-details",
@@ -1664,24 +1725,17 @@ def generate_ai_questions(
             )
 
         job_details = session.exec(
-            select(models.JobDetails).where(
-                models.JobDetails.job_id == job_application.job_id
+            select(models.CreateJobDetails).where(
+                models.CreateJobDetails.job_id == job_application.job_id
             )
         ).first()
         if not job_details:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job details not found for job_id: {job_application.job_id}",
+                detail=f"Create job details not found for job_id: {job_application.job_id}",
             )
 
-        job = session.exec(
-            select(models.Jobs).where(models.Jobs.job_id == job_details.job_id)
-        ).first()
-        if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job not found for job_id: {job_details.job_id}",
-            )
+
 
         resume_parser = S3ResumeParser()
         resume_text_response = resume_parser.extract_text(resume_analysis.file_path)
@@ -1690,21 +1744,86 @@ def generate_ai_questions(
         else:
             resume_text = resume_text_response or "No resume text available."
 
+        # Combine work details as job info
+        info_parts = []
+        if job_details.location:
+            info_parts.append(job_details.location)
+        if job_details.country:
+            info_parts.append(job_details.country)
+        if job_details.work_mode:
+            info_parts.append(job_details.work_mode)
+        if job_details.employment_type:
+            info_parts.append(job_details.employment_type)
+        job_info = ", ".join(info_parts) if info_parts else None
+
+        # Fetch job description
+        job_desc_record = session.exec(
+            select(models.JobDescription).where(
+                models.JobDescription.job_id == job_details.job_id
+            )
+        ).first()
+        job_description_str = ""
+        if job_desc_record and job_desc_record.description:
+            if isinstance(job_desc_record.description, list):
+                desc_parts = []
+                for item in job_desc_record.description:
+                    if isinstance(item, dict):
+                        title = item.get("title") or item.get("section_title") or item.get("heading")
+                        content = item.get("content") or item.get("text") or item.get("value")
+                        if title and content:
+                            desc_parts.append(f"{title}: {content}")
+                        elif content:
+                            desc_parts.append(content)
+                        else:
+                            desc_parts.append(", ".join(f"{k}: {v}" for k, v in item.items() if v))
+                    elif isinstance(item, str):
+                        desc_parts.append(item)
+                job_description_str = "\n".join(desc_parts)
+            elif isinstance(job_desc_record.description, str):
+                job_description_str = job_desc_record.description
+
+        # Combine requirements
+        req_parts = []
+        if job_details.min_experience is not None or job_details.max_experience is not None:
+            exp_str = ""
+            if job_details.min_experience is not None and job_details.max_experience is not None:
+                exp_str = f"{job_details.min_experience} to {job_details.max_experience} years experience"
+            elif job_details.min_experience is not None:
+                exp_str = f"Minimum {job_details.min_experience} years experience"
+            else:
+                exp_str = f"Maximum {job_details.max_experience} years experience"
+            req_parts.append(exp_str)
+        if job_details.certifications_required:
+            req_parts.append(f"Certifications: {job_details.certifications_required}")
+        if job_details.languages:
+            req_parts.append(f"Languages: {job_details.languages}")
+        if job_details.additional_notes:
+            req_parts.append(f"Notes: {job_details.additional_notes}")
+        job_requirements = "\n".join(req_parts) if req_parts else None
+
+        # Extract qualification
+        qualification = job_details.education_requirements
+
+        # Extract skills
+        skills = job_details.skills_must_have
+        if job_details.nice_to_have_skills:
+            skills = f"{skills or ''}\nNice to have: {job_details.nice_to_have_skills}"
+
         job_description = utils.construct_job_description_for_llm(
             job_title=db_operations.get_job_title(session, job_details.job_id),
-            job_info=job.job_info,
-            job_description=job_details.job_description,
-            job_requirements=job_details.job_requirements,
-            qualification=job_details.qualification,
-            skills=job_details.skills,
+            job_info=job_info,
+            job_description=job_description_str,
+            job_requirements=job_requirements,
+            qualification=qualification,
+            skills=skills,
         )
 
         technial_interviewer = AIInterviewer(
             job_role=db_operations.get_job_title(session, job_details.job_id),
             job_description=job_description,
             experience=resume_analysis.experience_level,
-            skills=job_details.skills,
-            topics=resume_analysis.interview_focus_areas,
+            skills=skills,
+            topics=resume_analysis.tb_interview_focus_areas,
             resume_text=resume_text,
         )
 
@@ -1713,6 +1832,8 @@ def generate_ai_questions(
             difficulty=data.difficulty_level,
             question_types=data.question_type,
         )
+
+        print(f"\n\nGenerated questions_response: {questions_response}\n\n")
 
         # Standardize questions format in questions_response without saving to DB
         if questions_response and "questions" in questions_response:
@@ -1794,330 +1915,26 @@ def get_generated_ai_questions(
             detail="An error occurred while fetching AI questions.",
         )
 
-
-@router.post("/custom-question", response_model=GenerateAIQuestionsResponse)
-def add_custom_question(
-    data: AddCustomQuestionRequest,
+@router.post("/check-interview-schedule-status")
+def check_interview_schedule_status(
+    data: CheckInterviewStatusRequest,
     session: Session = Depends(deps.get_session),
 ):
-    logger.info(f"add-custom-question for application_id: {data.application_id}")
-    try:
-        # Check/create InterviewSession and InterviewAnalysis if they don't exist yet
-        interview_session = session.exec(
-            select(models.InterviewSessions).where(
-                models.InterviewSessions.application_id == data.application_id
-            )
-        ).first()
+    interview_session_id = data.interview_session_id
+    logger.info(f"check-interview-schedule-status for interview_session_id: {interview_session_id}")
+    interview_session = session.exec(
+        select(models.InterviewSessions).where(
+            models.InterviewSessions.interview_session_id == interview_session_id
+        )
+    ).first()
 
-        interview_analysis = session.exec(
-            select(models.InterviewAnalysis).where(
-                models.InterviewAnalysis.application_id == data.application_id
-            )
-        ).first()
-
-        if not interview_session or not interview_analysis:
-            job_app = session.exec(
-                select(models.JobApplications).where(
-                    models.JobApplications.id == data.application_id
-                )
-            ).first()
-            if not job_app:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Job application not found for application_id: {data.application_id}",
-                )
-            
-            if not interview_session:
-                interview_session_id = str(uuid4())
-                interview_session = models.InterviewSessions(
-                    interview_session_id=interview_session_id,
-                    application_id=data.application_id,
-                    question_type="AI",
-                    status=models.InterviewSessionStatusEnum.scheduled,
-                    exam_exit_password="",
-                    job_id=job_app.job_id,
-                )
-                session.add(interview_session)
-                session.flush()
-            else:
-                interview_session_id = interview_session.interview_session_id
-
-            if not interview_analysis:
-                interview_analysis = models.InterviewAnalysis(
-                    application_id=data.application_id,
-                    interview_session_id=interview_session_id,
-                    status=models.StatusEnum.not_started,
-                    questions=[],
-                    job_id=job_app.job_id,
-                )
-                session.add(interview_analysis)
-            
-            session.commit()
-
-        # Retrieve current question list from request data, falling back to DB if not provided
-        questions = []
-        if data.existing_questions is not None:
-            questions = list(data.existing_questions)
-        else:
-            # Fallback to check DB
-            ai_questions = session.exec(
-                select(models.AIInterviewQuestions).where(
-                    models.AIInterviewQuestions.application_id == data.application_id
-                )
-            ).first()
-            if ai_questions:
-                questions = list(ai_questions.questions or [])
-            elif interview_analysis and interview_analysis.questions:
-                questions = list(interview_analysis.questions)
-
-        # Calculate next question_id
-        next_id = 1
-        if questions:
-            ids = [q.get("question_id") or q.get("id") or 0 for q in questions if isinstance(q, dict)]
-            next_id = max(ids) + 1 if ids else len(questions) + 1
-
-        new_q = {
-            "question_id": next_id,
-            "question": data.question,
-            "expected_time": data.expected_time,
-            "difficulty_level": data.difficulty_level.lower(),
-            "question_type": data.question_type.lower(),
-        }
-        questions.append(new_q)
-        
-        # Standardize return questions format WITHOUT saving to DB
-        returned_questions = []
-        for q in questions:
-            if isinstance(q, dict):
-                returned_questions.append({
-                    "question_id": q.get("question_id") or q.get("id") or 1,
-                    "question": q.get("question") or q.get("question_text") or "",
-                    "expected_time": q.get("expected_time") or "2-3 mins",
-                    "difficulty_level": q.get("difficulty_level") or "medium",
-                    "question_type": q.get("question_type") or "technical"
-                })
-
-        return {
-            "total_questions": len(returned_questions),
-            "questions": returned_questions
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error adding custom question: {e}")
+    if not interview_session:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to add custom question.",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview session not found for interview_session_id: {interview_session_id}",
         )
 
-
-@router.put("/custom-question")
-def update_custom_question(
-    data: UpdateCustomQuestionRequest,
-    session: Session = Depends(deps.get_session),
-):
-    logger.info(f"update-custom-question for application_id: {data.application_id}, question_id: {data.question_id}")
-    try:
-        # Check if InterviewSession exists
-        interview_session = session.exec(
-            select(models.InterviewSessions).where(
-                models.InterviewSessions.application_id == data.application_id
-            )
-        ).first()
-        if not interview_session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Interview session not found.",
-            )
-
-        # Do NOT update/save any drafts to database tables.
-        # The frontend manages the in-memory state and sends the final list of questions to /finalize-questions.
-        return {
-            "status": "success",
-            "message": "Question updated successfully"
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating custom question: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update custom question.",
-        )
-
-
-@router.delete("/custom-question")
-def delete_custom_question(
-    data: DeleteCustomQuestionRequest,
-    session: Session = Depends(deps.get_session),
-):
-    logger.info(f"delete-custom-question for application_id: {data.application_id}, question_id: {data.question_id}")
-    try:
-        # Check if InterviewSession exists
-        interview_session = session.exec(
-            select(models.InterviewSessions).where(
-                models.InterviewSessions.application_id == data.application_id
-            )
-        ).first()
-        if not interview_session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Interview session not found.",
-            )
-
-        # Do NOT delete/save any drafts to database tables.
-        # The frontend manages the in-memory state and sends the final list of questions to /finalize-questions.
-        return {
-            "status": "success",
-            "message": "Question deleted successfully"
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting custom question: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete custom question.",
-        )
-
-def process_live_frame_sync(session_id: str, data: str):
-    from app.services.ai_interviewer.proctoring import ProctoringEngine
-    from app.db.session import engine
-    from sqlmodel import Session, select
-    from app import models
-    import json
-    from io import BytesIO
-    from app.utils import timezone_utils
-    from app.services import minio_helper as aws_helper
-    
-    try:
-        # 1. Decode base64 image
-        if data.startswith("data:image"):
-            header, b64_data = data.split(",", 1)
-        else:
-            b64_data = data
-            
-        image_data = base64.b64decode(b64_data)
-        image_array = np.frombuffer(image_data, np.uint8)
-        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-        if image is None:
-            return None, None
-            
-        # 2. Run proctoring engine
-        engine_instance = ProctoringEngine()
-        result = engine_instance.analyze_frame(image)
-        alerts = result.get("alerts", [])
-        metrics = result.get("metrics", {})
-        print(alerts)
-        # 3. Log to DB and MinIO if there are alerts
-        if alerts:
-            with Session(engine) as db_session:
-                interview_analysis = db_session.exec(
-                    select(models.InterviewAnalysis).where(
-                        models.InterviewAnalysis.interview_session_id == session_id
-                    )
-                ).first()
-                # print(interview_analysis)
-                
-                if interview_analysis:
-                    try:
-                        timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
-                        clean_alert_type = alerts[0].replace(" ", "_").lower()
-                        
-                        # Save violation image to MinIO/S3
-                        image_filename = f"live_violation_{clean_alert_type}_{timestamp_str}.jpg"
-                        s3_object_name = f"ai-interviews/proctoring/{session_id}/{image_filename}"
-                        
-                        _, buffer = cv2.imencode(".jpg", image)
-                        image_bytes = buffer.tobytes()
-                        
-                        upload_result = aws_helper.upload_image_to_s3(image_bytes, s3_object_name)
-                        image_path = upload_result.get("s3_url") if upload_result.get("success") else None
-                        
-                        # Save proctoring log JSON file to MinIO/S3
-                        log_filename = f"live_log_{clean_alert_type}_{timestamp_str}.json"
-                        log_s3_object_name = f"ai-interviews/proctoring/{session_id}/{log_filename}"
-                        log_payload = {
-                            "session_id": session_id,
-                            "alerts": alerts,
-                            "metrics": metrics,
-                            "timestamp": timezone_utils.get_ist_now().isoformat(),
-                            "image_path": image_path
-                        }
-                        log_bytes = json.dumps(log_payload, indent=2).encode("utf-8")
-                        
-                        # Upload JSON file to MinIO bucket
-                        minio_client = aws_helper.get_minio_client()
-                        if minio_client:
-                            bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
-                            aws_helper.ensure_bucket_exists(bucket_name)
-                            minio_client.put_object(
-                                bucket_name,
-                                log_s3_object_name,
-                                data=BytesIO(log_bytes),
-                                length=len(log_bytes),
-                                content_type="application/json"
-                            )
-                        
-                        # Save to SQL DB log
-                        proctoring_log = models.ProctoringLogs(
-                            interview_analysis_id=interview_analysis.id,
-                            event_type=models.ProctoringEventType.visual_violation,
-                            details=json.dumps(alerts),
-                            image_path=image_path,
-                            tb_severity="high severity",
-                        )
-                        db_session.add(proctoring_log)
-                        db_session.commit()
-                    except Exception as err:
-                        logger.error(f"Error logging live proctoring violation: {err}")
-        return alerts, metrics
-    except Exception as e:
-        logger.error(f"Error processing live frame: {e}")
-        return None, None
-
-
-async def run_background_detection(session_id: str, data: str):
-    import asyncio
-    try:
-        # Run process_live_frame_sync in a thread pool silently
-        await asyncio.to_thread(process_live_frame_sync, session_id, data)
-    except Exception as e:
-        logger.error(f"Error in background live monitoring detection for session {session_id}: {e}")
-    finally:
-        # Reset is_processing flag
-        state = stream_manager.get_proctoring_state(session_id)
-        state["is_processing"] = False
-
-
-@router.websocket("/ws/live-monitoring/{session_id}")
-async def live_monitoring_stream(websocket: WebSocket, session_id: str):
-    import asyncio
-    import time
-    logger.info(f"WebSocket live monitoring request received for session: {session_id}")
-    await stream_manager.connect(session_id, websocket)
-    try:
-        while True:
-            # Receive video frame (Base64 string or binary) from candidate
-            data = await websocket.receive_text()
-            
-            # 1. Forward the video frame IMMEDIATELY for lag-free video stream
-            await stream_manager.broadcast_frame(session_id, data, sender=websocket)
-            
-            # 2. Asynchronously evaluate proctoring violations without blocking
-            if data.startswith("data:image"):
-                state = stream_manager.get_proctoring_state(session_id)
-                current_time = time.time()
-                
-                # Check rate-limit (3 seconds) and guarantee no parallel detection runs
-                if not state["is_processing"] and (current_time - state["last_detection_time"] >= 3.0):
-                    state["is_processing"] = True
-                    state["last_detection_time"] = current_time
-                    asyncio.create_task(run_background_detection(session_id, data))
-            
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket live monitoring connection disconnected for session: {session_id}")
-        stream_manager.disconnect(session_id, websocket)
-    except Exception as e:
-        logger.error(f"Error in live monitoring WebSocket for session {session_id}: {e}")
-        stream_manager.disconnect(session_id, websocket)
+    return {
+        "is_scheduled": interview_session.is_scheduled,
+        "scheduled_time": interview_session.scheduled_time,
+    }

@@ -330,39 +330,9 @@ class GenerateAIQuestionsResponse(BaseModel):
     questions: List[GeneratedQuestionItem]
 
 
-# --- Custom Questions CRUD ---
-class AddCustomQuestionRequest(BaseModel):
+class UpdateMoveToScheduleRequest(BaseModel):
     application_id: int
-    question: str
-    question_type: str = "technical"
-    difficulty_level: str = "Medium"
-    expected_time: str = "2-3 mins"
-    existing_questions: Optional[List[Dict[str, Any]]] = None
-
-
-class UpdateCustomQuestionRequest(BaseModel):
-    application_id: int
-    question_id: int
-    question: Optional[str] = None
-    question_type: Optional[str] = None
-    difficulty_level: Optional[str] = None
-    expected_time: Optional[str] = None
-    existing_questions: Optional[List[Dict[str, Any]]] = None
-
-
-class DeleteCustomQuestionRequest(BaseModel):
-    application_id: int
-    question_id: int
-    existing_questions: Optional[List[Dict[str, Any]]] = None
-
-
-# --- Finalize Questions ---
-class FinalizedQuestion(BaseModel):
-    question_id: int
-    question: str
-    question_type: str = "technical"
-    difficulty_level: str = "Medium"
-    expected_time: str = "2-3 mins"
+    move_to_schedule: bool
 
 
 class FinalizeQuestionsRequest(BaseModel):
@@ -370,8 +340,6 @@ class FinalizeQuestionsRequest(BaseModel):
     questions: List[Any]
     min_pass_percentage: Optional[int] = None
     acceptable_score_range: Optional[str] = None
-
-
 
 
 class FinalizeQuestionsResponse(BaseModel):
@@ -386,4 +354,5 @@ class MoveToScheduleRequest(BaseModel):
     application_id : int
 
 
-
+class CheckInterviewStatusRequest(BaseModel):
+    interview_session_id: str

@@ -550,10 +550,10 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             out_color = RED_DANGER.hexval()
             display_outcome = "Not Shortlisted"
 
-    matched_sk = r_anal.matching_skills if r_anal else []
-    highlights = r_anal.strengths if r_anal else []
-    if not highlights and r_anal and r_anal.education_highlights:
-        highlights = r_anal.education_highlights
+    matched_sk = r_anal.tb_matching_skills if r_anal else []
+    highlights = r_anal.tb_strengths if r_anal else []
+    if not highlights and r_anal and r_anal.tb_education_highlights:
+        highlights = r_anal.tb_education_highlights
 
     left_table_data = [
         [

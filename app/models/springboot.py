@@ -3,55 +3,48 @@ from datetime import datetime, date
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Text, Column, String
 from app.utils import timezone_utils
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSON
 
 
 # --- Model Definitions ---
 
-
-class Jobs(SQLModel, table=True):
-    __tablename__ = "tb_jobs"
+class CreateJobDetails(SQLModel, table=True):
+    __tablename__ = "tb_create_job_details"
 
     job_id: Optional[int] = Field(default=None, primary_key=True)
-    job_code: str = Field(max_length=255)
-    job_location: str = Field(max_length=255)
-    experience: str = Field(max_length=255)
-    job_type: str = Field(max_length=255)
-    job_info: str = Field(max_length=255)
-    job_title: str = Field(max_length=255)
-    created_by: str = Field(max_length=255)
-    created_date: Optional[datetime] = Field()
-    job_level: str = Field(max_length=255)
-    job_mode: str = Field(max_length=255)
-    job_country: str = Field(max_length=255)
-
-
-class JobDescriptionRevisions(SQLModel, table=True):
-    __tablename__ = "tb_job_description_revisions"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_jobs.job_id", index=True)
-    revision_index: int = Field(index=True)
-    job_description: str = Field(sa_column=Column(Text, nullable=False))
-    update_parameter: Optional[str] = Field(default=None, max_length=100)
+    job_title: Optional[str] = None
+    role_id: Optional[int] = Field(default=None, alias="role_Id")
+    business_unit: Optional[int] = Field(default=None)
+    department: Optional[int] = Field(default=None)
+    location: Optional[str] = None
+    country: Optional[str] = None
+    job_code: Optional[str] = Field(default=None, unique=True)
+    openings: Optional[int] = None
+    target_start_date: Optional[date] = None
+    work_mode: Optional[str] = None
+    employment_type: Optional[str] = None
+    skills_must_have: Optional[str] = Field(default=None,sa_column=Column(Text))
+    nice_to_have_skills: Optional[str] = Field(default=None,sa_column=Column(Text))
+    min_experience: Optional[int] = None
+    max_experience: Optional[int] = None
+    additional_notes: Optional[str] = Field(default=None,sa_column=Column(Text))
+    submit: bool = Field(default=False)
+    created_by: Optional[str] = None
     created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)
+    is_open: Optional[bool] = None
+    education_requirements: Optional[str] = None
+    sr_id: Optional[str] = None
+    certifications_required: Optional[str] = Field(default=None,sa_column=Column(Text))
+    languages: Optional[str] = None
+    plan_id: Optional[int] = None
 
+class JobDescription(SQLModel, table=True):
+    __tablename__ = "tb_job_description"
 
-class JobDetails(SQLModel, table=(True)):
-    __tablename__ = "tb_job_details"
     id: Optional[int] = Field(default=None, primary_key=True)
-    created_by: Optional[str] = Field(max_length=255)
-    # job_title: Optional[str] = Field(max_length=255)
-    created_date: Optional[datetime] = Field()
-    job_description: Optional[str] = Field(sa_column=Column(Text))
-    job_id: Optional[int] = Field(default=None, foreign_key="tb_jobs.job_id")
-    job_requirements: Optional[str] = Field(sa_column=Column(Text))
-    qualification: Optional[str] = Field(max_length=255)
-    skills: Optional[str] = Field(sa_column=Column(Text))
-    updated_by: Optional[str] = Field(max_length=255)
-    updated_date: Optional[datetime] = Field()
-
-
+    sr_id: Optional[str] = None
+    job_id: Optional[int] = None
+    description: Optional[List[dict]] = Field(default=None,sa_column=Column(JSON))
 class JobApplications(SQLModel, table=(True)):
     __tablename__ = "tb_job_applications"
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -62,7 +55,7 @@ class JobApplications(SQLModel, table=(True)):
     created_date: Optional[datetime] = Field()
     email: Optional[str] = Field(max_length=1000)
     first_name: Optional[str] = Field(max_length=1000)
-    job_id: Optional[int] = Field(default=None, foreign_key="tb_jobs.job_id")
+    job_id: Optional[int] = Field(default=None, foreign_key="tb_create_job_details.job_id")
     last_name: Optional[str] = Field(max_length=1000)
     ph_no: Optional[str] = Field(max_length=255)
     privacy_policy: Optional[bool] = Field()
@@ -140,7 +133,7 @@ class SkillCategories(SQLModel, table=True):
 class JobSkillWeightage(SQLModel, table=True):
     __tablename__ = "tb_job_skill_weightage"
     job_skill_id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_jobs.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
     skill_id: int = Field(foreign_key="tb_skills.skill_id")
     category_id: int = Field(foreign_key="tb_skill_categories.category_id")
     experience_level: int
@@ -160,7 +153,7 @@ class Questions(SQLModel, table=True):
 class InterviewQuestions(SQLModel, table=True):
     __tablename__ = "tb_interview_questions"
     interview_question_id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_jobs.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
     question_id: int = Field(foreign_key="tb_questions.question_id")
     assigned_weightage: int
 
@@ -218,7 +211,7 @@ class CandidateInfo(SQLModel, table=True):
     email: Optional[str] = Field(default=None, max_length=150)
     job_country: Optional[str] = Field(default=None, max_length=100)
     job_title: Optional[str] = Field(default=None, max_length=100)
-    job_id: int = Field(foreign_key="tb_jobs.job_id")
+    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
     department: Optional[str] = Field(default=None, max_length=100)
     status: Optional[str] = Field(default=None, max_length=50)
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -308,20 +301,6 @@ class BGV(SQLModel, table=True):
     created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
     updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
     # is_deleted: bool = Field(default=False)
-
-
-class RoleRequirement(SQLModel, table=True):
-    __tablename__ = "tb_role_requirements"
-    id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_jobs.job_id")
-    skill_title: str = Field(max_length=255)
-    skill_description: str = Field(sa_column=Column(Text))
-    is_mandatory: bool = Field(default=False)
-    is_ai_suggested: bool = Field(default=False)
-    created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    is_deleted: bool = Field(default=False)
-
 
 # --- NEW TABLES ---
 
@@ -520,34 +499,6 @@ class SeniorityLevel(SQLModel, table=True):
     seniority_level: Optional[str] = Field(default=None, max_length=255)
 
 
-class SourcingEntity(SQLModel, table=True):
-    __tablename__ = "tb_sourcing_entity"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    agency_rpo: Optional[bool] = None
-    approved: Optional[bool] = None
-    company_site: Optional[bool] = None
-    diversity_enabled: Optional[bool] = None
-
-    diversity_tags: Optional[str] = None
-
-    indeed: Optional[bool] = None
-    internal_board: Optional[bool] = None
-    internal_first_policy: Optional[bool] = None
-    linkedin: Optional[bool] = None
-    naukri: Optional[bool] = None
-
-    referral_amount: Optional[float] = None
-    referral_enabled: Optional[bool] = None
-
-    sourcing_budget: Optional[int] = None
-
-    sr_id: str = Field(max_length=255)
-
-    submitted: Optional[bool] = None
-
-
 class SrBusinessJustification(SQLModel, table=True):
     __tablename__ = "tb_sr_business_justification"
 
@@ -593,49 +544,6 @@ class SrPositionBasics(SQLModel, table=True):
     target_start_date: Optional[date] = None
 
     work_mode: Optional[str] = Field(default=None, max_length=255)
-
-
-class StaffingRequisition(SQLModel, table=True):
-    __tablename__ = "tb_staffing_requisition"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    annual_hiring_cost: Optional[int] = None
-    business_case: Optional[str] = Field(default=None, max_length=2000)
-
-    business_unit: Optional[int] = None
-    department: Optional[int] = None
-
-    document: Optional[str] = Field(default=None, max_length=255)
-    employment_type: Optional[str] = Field(default=None, max_length=255)
-
-    equity: Optional[bool] = None
-    equity_amount: Optional[int] = None
-
-    impact_if_not_filled: Optional[str] = Field(default=None, max_length=2000)
-
-    job_title: Optional[str] = Field(default=None, max_length=255)
-    location: Optional[str] = Field(default=None, max_length=255)
-
-    openings: Optional[int] = None
-    priority: Optional[str] = Field(default=None, max_length=255)
-
-    proposed_total_compensation: Optional[int] = None
-
-    relocation_budget: Optional[bool] = None
-    relocation_budget_amount: Optional[int] = None
-
-    replaces_employee: Optional[int] = None
-    requisition_type: Optional[str] = Field(default=None, max_length=255)
-
-    seniority_level: Optional[str] = Field(default=None, max_length=255)
-
-    signing_bonus: Optional[bool] = None
-    signing_bonus_amount: Optional[int] = None
-
-    target_start_date: Optional[date] = None
-    work_mode: Optional[str] = Field(default=None, max_length=255)
-
 
 class TravelRequirement(SQLModel, table=True):
     __tablename__ = "tb_travel_requirement"

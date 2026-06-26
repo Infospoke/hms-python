@@ -53,33 +53,96 @@ class BatchAnalyzer:
             failed_analysis_count = 0
             analysis = defaultdict(list)
             for job_id in job_ids:
-                job_details = session.exec(
-                    select(models.JobDetails).where(models.JobDetails.job_id == job_id)
+                create_job_details = session.exec(
+                    select(models.CreateJobDetails).where(models.CreateJobDetails.job_id == job_id)
                 ).first()
-                if not job_details:
-                    logger.error(f"Job with ID {job_id} not found.")
+                if not create_job_details:
+                    logger.error(f"Job with ID {job_id} not found in tb_create_job_details.")
                     return
 
-                job = session.exec(
-                    select(models.Jobs).where(models.Jobs.job_id == job_details.job_id)
+                job_desc_record = session.exec(
+                    select(models.JobDescription).where(models.JobDescription.job_id == job_id)
                 ).first()
 
+                # Extract values from create_job_details and job_desc_record
+                job_title = create_job_details.job_title
+
+                # Combine work details as job info
+                info_parts = []
+                if create_job_details.location:
+                    info_parts.append(create_job_details.location)
+                if create_job_details.country:
+                    info_parts.append(create_job_details.country)
+                if create_job_details.work_mode:
+                    info_parts.append(create_job_details.work_mode)
+                if create_job_details.employment_type:
+                    info_parts.append(create_job_details.employment_type)
+                job_info = ", ".join(info_parts) if info_parts else None
+
+                # Extract job_description
+                job_description = ""
+                if job_desc_record and job_desc_record.description:
+                    if isinstance(job_desc_record.description, list):
+                        desc_parts = []
+                        for item in job_desc_record.description:
+                            if isinstance(item, dict):
+                                title = item.get("title") or item.get("section_title") or item.get("heading")
+                                content = item.get("content") or item.get("text") or item.get("value")
+                                if title and content:
+                                    desc_parts.append(f"{title}: {content}")
+                                elif content:
+                                    desc_parts.append(content)
+                                else:
+                                    desc_parts.append(", ".join(f"{k}: {v}" for k, v in item.items() if v))
+                            elif isinstance(item, str):
+                                desc_parts.append(item)
+                        job_description = "\n".join(desc_parts)
+                    elif isinstance(job_desc_record.description, str):
+                        job_description = job_desc_record.description
+
+                # Extract job_requirements
+                req_parts = []
+                if create_job_details.min_experience is not None or create_job_details.max_experience is not None:
+                    exp_str = ""
+                    if create_job_details.min_experience is not None and create_job_details.max_experience is not None:
+                        exp_str = f"{create_job_details.min_experience} to {create_job_details.max_experience} years experience"
+                    elif create_job_details.min_experience is not None:
+                        exp_str = f"Minimum {create_job_details.min_experience} years experience"
+                    else:
+                        exp_str = f"Maximum {create_job_details.max_experience} years experience"
+                    req_parts.append(exp_str)
+                if create_job_details.certifications_required:
+                    req_parts.append(f"Certifications: {create_job_details.certifications_required}")
+                if create_job_details.languages:
+                    req_parts.append(f"Languages: {create_job_details.languages}")
+                if create_job_details.additional_notes:
+                    req_parts.append(f"Notes: {create_job_details.additional_notes}")
+                job_requirements = "\n".join(req_parts) if req_parts else None
+
+                # Extract qualification
+                qualification = create_job_details.education_requirements
+
+                # Extract skills
+                skills = create_job_details.skills_must_have
+                if create_job_details.nice_to_have_skills:
+                    skills = f"{skills or ''}\nNice to have: {create_job_details.nice_to_have_skills}"
+
                 job_description_for_llm = self._construct_job_description_for_llm(
-                    job.job_title,
-                    job.job_info,
-                    job_details.job_description,
-                    job_details.job_requirements,
-                    job_details.qualification,
-                    job_details.skills,
+                    job_title,
+                    job_info,
+                    job_description,
+                    job_requirements,
+                    qualification,
+                    skills,
                 )
                 logger.info(
-                    f"Analyzing applications for job: {job.job_title} (ID: {job_id})"
+                    f"Analyzing applications for job: {create_job_details.job_title} (ID: {job_id})"
                 )
                 result = process_resumes(
                     session=session,
                     job_description=job_description_for_llm,
-                    job_id=job_details.job_id,
-                    job_title=job.job_title,
+                    job_id=create_job_details.job_id,
+                    job_title=create_job_details.job_title,
                     resume_files=[],
                     app_id_map=None,
                     verbose=True,
@@ -95,7 +158,7 @@ class BatchAnalyzer:
 
     def analyze_all_jobs(self):
         with Session(self.engine) as session:
-            jobs = session.exec(select(models.JobDetails)).all()
+            jobs = session.exec(select(models.CreateJobDetails)).all()
             for job in jobs:
                 self.analyze_job_applications([job.job_id])
 
@@ -119,15 +182,25 @@ class BatchAnalyzer:
                 apps_by_job[app.job_id].append(app)
             all_results = []
             for job_id, apps in apps_by_job.items():
-                job_details = session.exec(
-                    select(models.JobDetails).where(models.JobDetails.job_id == job_id)
+                create_job_details = session.exec(
+                    select(models.CreateJobDetails).where(models.CreateJobDetails.job_id == job_id)
                 ).first()
-                if not job_details:
+                if not create_job_details:
+                    error_msg = f"Job ID {job_id} related data was not present in the CreateJobDetails"
+                    logger.error(error_msg)
+                    from app.services.db_operations import log_resume_activity
                     for app in apps:
+                        log_resume_activity(
+                            session,
+                            app.id,
+                            "FAILED",
+                            error_msg,
+                            "BatchAnalyzer",
+                        )
                         all_results.append(
                             {
                                 "success": False,
-                                "error": consts.NO_JOB_DETAILS_FOUND_FOR_JOB_ID(job_id),
+                                "error": error_msg,
                                 "application_id": app.id,
                             }
                         )
@@ -148,24 +221,88 @@ class BatchAnalyzer:
                                 "application_id": app.id,
                             }
                         )
-                job = session.exec(
-                    select(models.Jobs).where(models.Jobs.job_id == job_details.job_id)
+                
+                job_desc_record = session.exec(
+                    select(models.JobDescription).where(models.JobDescription.job_id == job_id)
                 ).first()
 
                 if resume_files:
+                    # Extract values from create_job_details and job_desc_record
+                    job_title = create_job_details.job_title
+
+                    # Combine work details as job info
+                    info_parts = []
+                    if create_job_details.location:
+                        info_parts.append(create_job_details.location)
+                    if create_job_details.country:
+                        info_parts.append(create_job_details.country)
+                    if create_job_details.work_mode:
+                        info_parts.append(create_job_details.work_mode)
+                    if create_job_details.employment_type:
+                        info_parts.append(create_job_details.employment_type)
+                    job_info = ", ".join(info_parts) if info_parts else None
+
+                    # Extract job_description
+                    job_description = ""
+                    if job_desc_record and job_desc_record.description:
+                        if isinstance(job_desc_record.description, list):
+                            desc_parts = []
+                            for item in job_desc_record.description:
+                                if isinstance(item, dict):
+                                    title = item.get("title") or item.get("section_title") or item.get("heading")
+                                    content = item.get("content") or item.get("text") or item.get("value")
+                                    if title and content:
+                                        desc_parts.append(f"{title}: {content}")
+                                    elif content:
+                                        desc_parts.append(content)
+                                    else:
+                                        desc_parts.append(", ".join(f"{k}: {v}" for k, v in item.items() if v))
+                                elif isinstance(item, str):
+                                    desc_parts.append(item)
+                            job_description = "\n".join(desc_parts)
+                        elif isinstance(job_desc_record.description, str):
+                            job_description = job_desc_record.description
+
+                    # Extract job_requirements
+                    req_parts = []
+                    if create_job_details.min_experience is not None or create_job_details.max_experience is not None:
+                        exp_str = ""
+                        if create_job_details.min_experience is not None and create_job_details.max_experience is not None:
+                            exp_str = f"{create_job_details.min_experience} to {create_job_details.max_experience} years experience"
+                        elif create_job_details.min_experience is not None:
+                            exp_str = f"Minimum {create_job_details.min_experience} years experience"
+                        else:
+                            exp_str = f"Maximum {create_job_details.max_experience} years experience"
+                        req_parts.append(exp_str)
+                    if create_job_details.certifications_required:
+                        req_parts.append(f"Certifications: {create_job_details.certifications_required}")
+                    if create_job_details.languages:
+                        req_parts.append(f"Languages: {create_job_details.languages}")
+                    if create_job_details.additional_notes:
+                        req_parts.append(f"Notes: {create_job_details.additional_notes}")
+                    job_requirements = "\n".join(req_parts) if req_parts else None
+
+                    # Extract qualification
+                    qualification = create_job_details.education_requirements
+
+                    # Extract skills
+                    skills = create_job_details.skills_must_have
+                    if create_job_details.nice_to_have_skills:
+                        skills = f"{skills or ''}\nNice to have: {create_job_details.nice_to_have_skills}"
+
                     job_description_for_llm = self._construct_job_description_for_llm(
-                        job.job_title,
-                        job.job_info,
-                        job_details.job_description,
-                        job_details.job_requirements,
-                        job_details.qualification,
-                        job_details.skills,
+                        job_title,
+                        job_info,
+                        job_description,
+                        job_requirements,
+                        qualification,
+                        skills,
                     )
                     job_results = process_resumes(
                         session=session,
                         job_description=job_description_for_llm,
-                        job_id=job.job_id,
-                        job_title=job.job_title,
+                        job_id=create_job_details.job_id,
+                        job_title=create_job_details.job_title,
                         resume_files=resume_files,
                         app_id_map=app_id_map,
                         verbose=True,

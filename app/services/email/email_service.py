@@ -66,8 +66,8 @@ def get_candidate_details(application_id: int, db_session: Session):
         )
     ).first()
     job_details = db_session.exec(
-        select(models.JobDetails).where(
-            models.JobDetails.job_id == job_application.job_id
+        select(models.CreateJobDetails).where(
+            models.CreateJobDetails.job_id == job_application.job_id
         )
     ).first()
     job_title = db_operations.get_job_title(db_session, job_details.job_id)
