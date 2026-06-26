@@ -14,6 +14,7 @@ class StatusEnum(str, Enum):
 
 
 class InterviewSessionStatusEnum(str, Enum):
+    Screened = "Screened"
     completed = "completed"
     scheduled = "scheduled"
     upcoming = "upcoming"
