@@ -25,6 +25,7 @@ from app.schemas import (
     ResumeAnalysisRequest,
     DeleteResumeLogRequest,
     DeleteResumeLogsRequest,
+    FetchResumeAnalysisUpdateRequest
 )
 from app.services.resume_parser.batch_analyzer import BatchAnalyzer
 from app.core import config as consts
@@ -144,11 +145,11 @@ def fetch_resume_analysis(
 
 @router.post("/analysis/update")
 def fetch_resume_analysis_update(
-    application_id: Optional[int] = Query(None),
-    request_data: Optional[Dict[str, Any]] = Body(None),
+    data: FetchResumeAnalysisUpdateRequest,
     session: Session = Depends(deps.get_session),
 ):
     try:
+        application_id = data.application_id
         def format_resume_update(item: models.ResumeAnalysisUpdate) -> Dict[str, Any]:
             res = item.model_dump()
             for key, value in res.items():

@@ -356,3 +356,6 @@ class MoveToScheduleRequest(BaseModel):
 
 class CheckInterviewStatusRequest(BaseModel):
     interview_session_id: str
+
+class FetchResumeAnalysisUpdateRequest(BaseModel):
+    application_id: int
