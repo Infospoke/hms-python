@@ -170,9 +170,10 @@ Generate exactly {count} interview questions.
 
 Each question must be tailored to the candidate's background and the job description.
 
-**VARIETY, UNIQUENESS & DIVERSITY:**
+**VARIETY, UNIQUENESS & DIVERSITY (CRITICAL):**
 - Ensure all questions are **highly unique, distinct, and creative**.
 - Do not repeat the same question or ask similar questions across different types.
+- EVERY single question must be completely different. DO NOT repeat the same query or sentence structure.
 - AVOID generic or textbook questions.
 - Every time this generator runs, it must produce a completely different set of questions.
 - Context ID: {uuid.uuid4()}
@@ -245,21 +246,65 @@ Return a raw JSON object containing the total questions count and the list of qu
                     parsed["total_questions"] = len(parsed["questions"])
                     return parsed
         except Exception as e:
-            logger.error(f"Error in generate_custom_questions: {e}")
+            logger.error(f"Error in generate_custom_questions with Gemini: {e}")
+            logger.info("Attempting fallback to Groq...")
+            try:
+                from groq import Groq
+                if consts.GROQ_API_KEY:
+                    groq_client = Groq(api_key=consts.GROQ_API_KEY)
+                    groq_model = consts.GROQ_MODEL or "llama-3.3-70b-versatile"
+                    
+                    chat_completion = groq_client.chat.completions.create(
+                        messages=[{"role": "user", "content": prompt}],
+                        model=groq_model,
+                        temperature=0.7,
+                        response_format={"type": "json_object"}
+                    )
+                    raw_resp = chat_completion.choices[0].message.content.strip()
+                    parsed = self.parse_json(raw_resp)
+                    if isinstance(parsed, list):
+                        parsed = {
+                            "total_questions": len(parsed),
+                            "questions": parsed
+                        }
+                    if isinstance(parsed, dict) and "questions" in parsed:
+                        cleaned_questions = []
+                        for idx, q in enumerate(parsed["questions"]):
+                            q_id = q.get("question_id") or (idx + 1)
+                            q_text = q.get("question") or q.get("question_text") or ""
+                            q_time = q.get("expected_time") or "2-3 mins"
+                            
+                            q_diff = str(q.get("difficulty_level") or "").lower()
+                            q_type = str(q.get("question_type") or "").lower()
+                            
+                            valid_types = ["technical", "situational", "behavioural", "behavioral"]
+                            if (not q_type or q_type not in valid_types) and q_diff in valid_types:
+                                q_type = q_diff
+                                q_diff = difficulty.lower()
+                                
+                            if not q_type or q_type not in valid_types:
+                                q_type = question_types[idx % len(question_types)] if question_types else "technical"
+                                
+                            if not q_diff:
+                                q_diff = difficulty.lower()
+                                
+                            cleaned_questions.append({
+                                "question_id": q_id,
+                                "question": q_text,
+                                "expected_time": q_time,
+                                "difficulty_level": q_diff,
+                                "question_type": q_type
+                            })
+                        parsed["questions"] = cleaned_questions[:count]
+                        parsed["total_questions"] = len(parsed["questions"])
+                        logger.info("Successfully generated custom questions using Groq fallback.")
+                        return parsed
+            except Exception as groq_err:
+                logger.error(f"Groq fallback failed: {groq_err}")
 
-        # Fallback response if generation or parsing fails
-        fallback_questions = []
-        for i in range(1, count + 1):
-            q_type = question_types[i % len(question_types)] if question_types else "technical"
-            fallback_questions.append({
-                "question_id": i,
-                "question": f"Can you describe a challenging project related to {self.job_role} that you managed recently?",
-                "expected_time": "2-3 mins",
-                "difficulty_level": difficulty.lower(),
-                "question_type": q_type
-            })
+        logger.error("Both Gemini and Groq custom question generation failed. Returning empty list.")
         return {
-            "total_questions": count,
-            "questions": fallback_questions
+            "total_questions": 0,
+            "questions": []
         }
 

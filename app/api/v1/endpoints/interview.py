@@ -1750,7 +1750,7 @@ def generate_ai_questions(
         )
 
 
-@router.get("/generate-ai-questions", response_model=GenerateAIQuestionsResponse)
+@router.get("/get-all-generate-ai-questions", response_model=GenerateAIQuestionsResponse)
 def get_generated_ai_questions(
     application_id: int = Query(...),
     session: Session = Depends(deps.get_session),
@@ -1765,7 +1765,7 @@ def get_generated_ai_questions(
 
         if not ai_questions:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=status.HTTP_204_NO_CONTENT,
                 detail=f"AI generated questions not found for application_id: {application_id}",
             )
 
