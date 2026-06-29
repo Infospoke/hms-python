@@ -359,3 +359,7 @@ class CheckInterviewStatusRequest(BaseModel):
 
 class FetchResumeAnalysisUpdateRequest(BaseModel):
     application_id: int
+
+class FetchInterviewFeedbackRequest(BaseModel):
+    application_id: int
+    current_stage_id: int
