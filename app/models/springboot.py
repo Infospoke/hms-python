@@ -635,3 +635,24 @@ class InterviewAssignment(SQLModel, table=True):
     plan_name: Optional[str] = Field(default=None, max_length=255)
     user_id: Optional[int] = Field(default=None)
     priority: Optional[int] = Field(default=None)
+
+class InterviewFeedback(SQLModel, table=True):
+    __tablename__ = "tb_interview_feedback"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    applicant_id: Optional[int] = Field(default=None)
+    interview_type: Optional[str] = Field(default=None, max_length=255)
+    current_stage_id: Optional[int] = Field(default=None)
+    overall_rating: Optional[int] = Field(default=None)
+    technical_knowledge: Optional[int] = Field(default=None)
+    communication: Optional[int] = Field(default=None)
+    problem_solving: Optional[int] = Field(default=None)
+    analytical_thinking: Optional[int] = Field(default=None)
+    cultural_fit: Optional[int] = Field(default=None)
+    strengths: Optional[str] = Field(default=None, sa_column=Column(Text))
+    areas_of_improvements: Optional[str] = Field(default=None, sa_column=Column(Text))
+    additional_comments: Optional[str] = Field(default=None, sa_column=Column(Text))
+    decision: Optional[str] = Field(default=None, max_length=255)
+    submitted_on: Optional[datetime] = Field(default=None)
+    submitted_by: Optional[str] = Field(default=None, max_length=255)
+    user_id: Optional[int] = Field(default=None)

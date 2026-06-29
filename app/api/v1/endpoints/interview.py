@@ -1938,3 +1938,36 @@ def check_interview_schedule_status(
         "is_scheduled": interview_session.is_scheduled,
         "scheduled_time": interview_session.scheduled_time,
     }
+
+
+@router.post("/interview-feedback")
+def fetch_interview_feedback(
+    data: FetchInterviewFeedbackRequest,
+    session: Session = Depends(deps.get_session),
+):
+    application_id = data.application_id
+    current_stage_id = data.current_stage_id
+    logger.info(f"Fetching interview feedback for application_id: {application_id}, current_stage_id: {current_stage_id}")
+    try:
+        feedback = session.exec(
+            select(models.InterviewFeedback).where(
+                models.InterviewFeedback.applicant_id == application_id,
+                models.InterviewFeedback.current_stage_id == current_stage_id
+            )
+        ).first()
+
+        if not feedback:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Interview feedback not yet submited for application_id: {application_id} and current_stage_id: {current_stage_id}",
+            )
+
+        return {"success": True, "data": feedback}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching interview feedback: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while fetching interview feedback: {str(e)}",
+        )
