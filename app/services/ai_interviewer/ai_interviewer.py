@@ -146,6 +146,7 @@ class AIInterviewer(BaseInterviewer):
             "overall": 0,
             "feedback": "Error analyzing response.",
             "domain_knowledge": 0,
+            "ai_suggested_answer": "",
         }
 
     def generate_custom_questions(self, count: int, difficulty: str, question_types: list) -> dict:

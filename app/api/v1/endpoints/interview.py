@@ -686,6 +686,11 @@ def fetch_interview_analysis(
                         if qna.ai_analysis and "clarity" in qna.ai_analysis
                         else (qna.ai_analysis.get("communication_clarity") if qna.ai_analysis else None)
                     ),
+                    "ai_suggested_answer": (
+                        qna.ai_analysis.get("ai_suggested_answer")
+                        if qna.ai_analysis and "ai_suggested_answer" in qna.ai_analysis
+                        else (qna.ai_analysis.get("suggested_answer") if qna.ai_analysis else None)
+                    ),
                     "created_at": (
                         timezone_utils.format_datetime_for_api(qna.created_at)
                         if qna.created_at

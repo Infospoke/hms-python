@@ -76,6 +76,7 @@ You MUST return **0 for ALL fields** if the answer matches ANY of these:
     "accuracy": <int 0-10 (score representing the correctness and validity of the information provided)>,
     "clarity": <int 0-10 (score representing the structure, flow, and understandability of the answer)>,
     "relevant_answer": <true or false>,
-    "feedback": "<Concise feedback. If 0, state clearly why (e.g. 'Answer was irrelevant').>"
+    "feedback": "<Concise feedback. If 0, state clearly why (e.g. 'Answer was irrelevant').>",
+    "ai_suggested_answer": "<A professional and concise suggested/ideal answer that demonstrates what a high-scoring answer to this question looks like (2-3 sentences).>"
 }}
 """
