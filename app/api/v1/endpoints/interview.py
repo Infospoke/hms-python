@@ -1976,3 +1976,204 @@ def fetch_interview_feedback(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while fetching interview feedback: {str(e)}",
         )
+
+
+def extract_bullet_points(text: str) -> list:
+    if not text:
+        return []
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Remove common list bullet prefixes
+        for prefix in ["-", "*", "•"]:
+            if line.startswith(prefix):
+                line = line[len(prefix):].strip()
+                break
+        if line:
+            lines.append(line)
+    return lines
+
+
+@router.get("/evaluation-summary")
+def get_evaluation_summary(
+    application_id: int = Query(...),
+    session: Session = Depends(deps.get_session),
+):
+    logger.info(f"Fetching evaluation summary for application_id: {application_id}")
+    try:
+        # Fetch job application
+        job_application = session.exec(
+            select(models.JobApplications).where(
+                models.JobApplications.id == application_id
+            )
+        ).first()
+
+        if not job_application:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job application not found for ID: {application_id}"
+            )
+
+        # 1. Fetch AI Interview Analysis
+        interview_analysis = session.exec(
+            select(models.InterviewAnalysis).where(
+                and_(
+                    models.InterviewAnalysis.application_id == application_id,
+                    models.InterviewAnalysis.analysis_completed == True
+                )
+            )
+        ).first()
+
+        # 2. Get AI Details needed (using database aggregation func.count to avoid memory/network overhead)
+        from sqlalchemy import func
+        qna_count = 0
+        proctoring_violations_count = 0
+        if interview_analysis:
+            qna_count = session.exec(
+                select(func.count(models.QNA_Analysis.id)).where(
+                    models.QNA_Analysis.interview_analysis_id == interview_analysis.id
+                )
+            ).first() or 0
+
+            proctoring_violations_count = session.exec(
+                select(func.count(models.ProctoringLogs.id)).where(
+                    models.ProctoringLogs.interview_analysis_id == interview_analysis.id
+                )
+            ).first() or 0
+
+        # 3. Fetch all human feedback records from tb_interview_feedback table directly
+        feedback_list = session.exec(
+            select(models.InterviewFeedback).where(
+                models.InterviewFeedback.applicant_id == application_id
+            )
+        ).all()
+
+        # Pre-fetch all assignments for the job to avoid N+1 query patterns in the loop
+        assignments = session.exec(
+            select(models.InterviewAssignment).where(
+                models.InterviewAssignment.job_id == job_application.job_id
+            )
+        ).all()
+        assignment_dict = {
+            assign.stage_name: assign 
+            for assign in assignments 
+            if assign.stage_name
+        }
+
+
+        rounds_performance = []
+        all_scores = []
+        key_strengths = []
+        areas_of_improvement = []
+
+        # Add AI round as Round 1 if analysis exists
+        if interview_analysis:
+            all_scores.append(interview_analysis.total_score)
+            rounds_performance.append({
+                "round_number": 1,
+                "round_type": "AI Interview",
+                "interviewer_name": "AI System",
+                "interview_mode": "Online",
+                "score": interview_analysis.total_score,
+                "score_percentage": interview_analysis.total_score,
+                "recommendation": interview_analysis.recommendation or "Completed"
+            })
+
+        # Process human rounds from tb_interview_feedback table directly
+        for idx, fb in enumerate(feedback_list):
+            round_num = len(rounds_performance) + 1
+            round_type = fb.interview_type or f"Round {round_num}"
+
+            # Lookup assignment details from pre-fetched dictionary
+            assignment = assignment_dict.get(fb.interview_type) if fb.interview_type else None
+
+            interviewer_name = fb.submitted_by or (assignment.interviewer_name if assignment else "N/A")
+
+            score = fb.overall_rating
+            if score is not None:
+                # Normalizing 1-5 rating to 100 percentage
+                score_percentage = (score / 5.0) * 100 if score <= 5 else score
+                all_scores.append(score_percentage)
+            else:
+                score_percentage = None
+
+            rounds_performance.append({
+                "round_number": round_num,
+                "round_type": round_type,
+                "interviewer_name": interviewer_name,
+                "interview_mode": fb.interview_mode or "N/A",
+                "score": score,
+                "score_percentage": score_percentage,
+                "recommendation": "HIRE" if fb.decision and fb.decision.strip().upper() == "SELECTED" else (fb.decision or "Completed"),
+                "feedback_details": {
+                    "technical_skills": fb.technical_knowledge,
+                    "problem_solving_skills": fb.problem_solving,
+                    "coding_efficiency": fb.analytical_thinking,
+                    "system_design": fb.cultural_fit,
+                    "communication": fb.communication,
+                    "interview_feedback": fb.additional_comments,
+                    "overall_rating": fb.overall_rating,
+                    "interview_mode": fb.interview_mode or "N/A"
+                }
+            })
+
+            # Extract bullet points from candidate strengths and areas of improvements
+            if fb.strengths:
+                key_strengths.extend(extract_bullet_points(fb.strengths))
+            if fb.areas_of_improvements:
+                areas_of_improvement.extend(extract_bullet_points(fb.areas_of_improvements))
+
+        # Calculate average scores
+        average_ai_score = interview_analysis.total_score if interview_analysis else None
+        average_score_across_rounds = sum(all_scores) / len(all_scores) if all_scores else None
+        total_rounds = (1 if interview_analysis else 0) + len(feedback_list)
+        completed_rounds_count = total_rounds
+
+        # Determine final AI decision based on the average score across all rounds
+        final_ai_decision = "N/A"
+        if average_score_across_rounds is not None:
+            if average_score_across_rounds >= 85.0:
+                final_ai_decision = "STRONG HIRE"
+            elif average_score_across_rounds >= 70.0:
+                final_ai_decision = "HIRE"
+            elif average_score_across_rounds >= 40.0:
+                final_ai_decision = "CONSIDER"
+            else:
+                final_ai_decision = "REJECT"
+
+        if final_ai_decision != "N/A":
+            ai_recommendation_text = f"Candidate showed {final_ai_decision.lower()} with an AI evaluation score of {round(average_score_across_rounds, 1)}%."
+        else:
+            ai_recommendation_text = "AI evaluation pending or not started."
+
+        return {
+            "success": True,
+            "data": {
+                "candidate_name": f"{job_application.first_name} {job_application.last_name}" if job_application else "N/A",
+                "candidate_email": job_application.email if job_application else "N/A",
+                "average_ai_score": average_ai_score,
+                "total_rounds_completed": completed_rounds_count,
+                "total_rounds": total_rounds,
+                "average_score_across_rounds": average_score_across_rounds,
+                "status": "PASS" if getattr(job_application, "in_person_interviews", False) else (job_application.current_stage or "INTERVIEW"),
+                "rounds_performance": rounds_performance,
+                "consolidated_evaluation": {
+                    "key_strengths": key_strengths,
+                    "areas_of_improvement": areas_of_improvement,
+                    "ai_recommendation": {
+                        "status": final_ai_decision,
+                        "text": ai_recommendation_text,
+                        "score": round(average_score_across_rounds, 1) if average_score_across_rounds is not None else None
+                    }
+                }
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching evaluation summary: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch evaluation summary: {str(e)}"
+        )
