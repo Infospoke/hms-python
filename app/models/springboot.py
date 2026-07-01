@@ -64,6 +64,7 @@ class JobApplications(SQLModel, table=(True)):
     rejected: Optional[bool] = Field(default=False)
     stage_entry_date: Optional[datetime] = Field(default=None)
     current_stage: Optional[str] = Field(default=None, max_length=255)
+    in_person_interviews: Optional[bool] = Field(default=False)
     # is_deleted: bool = Field(default=False)
 
 
@@ -656,3 +657,4 @@ class InterviewFeedback(SQLModel, table=True):
     submitted_on: Optional[datetime] = Field(default=None)
     submitted_by: Optional[str] = Field(default=None, max_length=255)
     user_id: Optional[int] = Field(default=None)
+    interview_mode: Optional[str] = Field(default=None, max_length=255)

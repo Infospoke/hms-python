@@ -692,7 +692,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         i_rec_color = TEXT_PRIMARY.hexval()
         if i_rec and isinstance(i_rec, str):
             val = i_rec
-            if val == "Hire":
+            if val in ("Hire", "Strong hire"):
                 i_rec_color = GREEN_SUCCESS.hexval()
             elif val == "Consider":
                 i_rec_color = YELLOW_WARN.hexval()

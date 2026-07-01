@@ -353,7 +353,9 @@ class AnalysisWorker(threading.Thread):
             count = len(all_responses)
             interview_analysis.total_score = round(total_score_sum / count, 1)
 
-            if interview_analysis.total_score >= 80.0:
+            if interview_analysis.total_score >= 85.0:
+                interview_analysis.recommendation = "STRONG HIRE"
+            elif interview_analysis.total_score >= 70.0:
                 interview_analysis.recommendation = "HIRE"
             elif interview_analysis.total_score >= 40.0:
                 interview_analysis.recommendation = "CONSIDER"
