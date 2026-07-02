@@ -31,7 +31,7 @@ def get_mail_config():
         MAIL_STARTTLS=consts.MAIL_STARTTLS if consts.MAIL_STARTTLS is not None else True,
         MAIL_SSL_TLS=consts.MAIL_SSL_TLS if consts.MAIL_SSL_TLS is not None else False,
         USE_CREDENTIALS=True,
-        VALIDATE_CERTS=False,
+        VALIDATE_CERTS=True,
     )
 
 

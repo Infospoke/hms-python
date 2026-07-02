@@ -224,7 +224,7 @@ class CandidateInfo(SQLModel, table=True):
     accepted_date: Optional[datetime]
     created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
     updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    comment: Optional[str] = Field(default=None, sa_column=Column(Text))
+    # comment: Optional[str] = Field(default=None, sa_column=Column(Text))
     # is_deleted: bool = Field(default=False)
 
 

@@ -86,7 +86,7 @@ class FetchInterviewAnalysisRequest(BaseModel):
 class UpdateFinalDecisionRequest(BaseModel):
     application_id: int
     decision: str  # "HIRED" or "REJECTED"
-    comment: Optional[str] = ""  # Optional note/reason for the decision
+    # comment: Optional[str] = ""  # Optional note/reason for the decision
 
 
 class SubmitAnswersRequest(BaseModel):

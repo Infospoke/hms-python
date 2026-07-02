@@ -447,7 +447,7 @@ def add_interview_details(results_db, session):
             )
         ).first()
         result["candidate_status"] = candidate_info.status if candidate_info else None
-        result["candidate_comment"] = candidate_info.comment if candidate_info else None
+        # result["candidate_comment"] = candidate_info.comment if candidate_info else None
         # -------------------------------
         # Job details
         # -------------------------------

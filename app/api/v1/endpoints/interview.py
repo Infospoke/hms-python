@@ -487,7 +487,7 @@ def update_final_candidate_decision(
             select(models.CreateJobDetails).where(models.CreateJobDetails.job_id == job_application.job_id)
         ).first()
 
-        comment = data.comment or ""
+        # comment = data.comment or ""
         resolved_status = "Joined" if data.decision == "HIRED" else "Rejected"
 
         candidate_info = models.CandidateInfo(
