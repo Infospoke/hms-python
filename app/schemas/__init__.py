@@ -361,3 +361,6 @@ class CheckInterviewStatusRequest(BaseModel):
 class FetchInterviewFeedbackRequest(BaseModel):
     application_id: int
     current_stage_id: int
+
+class CalculateEvaluationSummaryRequest(BaseModel):
+    application_id: int
