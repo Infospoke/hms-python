@@ -128,3 +128,27 @@ class AIInterviewQuestions(SQLModel, table=(True)):
     questions: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)
     job_id: int = Field(foreign_key="tb_create_job_details.job_id")
+
+class EvaluationSummary(SQLModel, table=True):
+    __tablename__ = "tb_interview_evaluation_summary"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    application_id: int = Field(foreign_key="tb_job_applications.id")
+    candidate_name: Optional[str] = Field(default=None, max_length=255)
+    candidate_email: Optional[str] = Field(default=None, max_length=255)
+    total_rounds_completed: Optional[int] = Field(default=None)
+    total_rounds: Optional[int] = Field(default=None)
+    average_score_across_rounds: Optional[float] = Field(default=None)
+    status: Optional[str] = Field(default=None, max_length=255)
+    rounds_performance: Optional[List[Dict[str, Any]]] = Field(
+        default_factory=list, sa_column=Column(JSON)
+    )
+    consolidated_evaluation: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, sa_column=Column(JSON)
+    )
+    technical_score: Optional[float] = Field(default=None)
+    managerial_score: Optional[float] = Field(default=None)
+    hr_score: Optional[float] = Field(default=None)
+    ai_score: Optional[float] = Field(default=None)
+    ai_recommendation_status: Optional[str] = Field(default=None, max_length=255)
+    created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)

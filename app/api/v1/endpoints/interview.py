@@ -1944,7 +1944,6 @@ def check_interview_schedule_status(
         "scheduled_time": interview_session.scheduled_time,
     }
 
-
 @router.post("/interview-feedback")
 def fetch_interview_feedback(
     data: FetchInterviewFeedbackRequest,
@@ -1967,7 +1966,28 @@ def fetch_interview_feedback(
                 detail=f"Interview feedback not yet submited for application_id: {application_id} and current_stage_id: {current_stage_id}",
             )
 
-        return {"success": True, "data": feedback}
+        # Convert feedback to dictionary so we can add the score dynamically
+        feedback_data = feedback.dict()
+
+        # Query EvaluationSummary to fetch round scores
+        evaluation_summary = session.exec(
+            select(models.EvaluationSummary).where(
+                models.EvaluationSummary.application_id == application_id
+            )
+        ).first()
+
+        score = None
+        if evaluation_summary:
+            if current_stage_id == 2:
+                score = evaluation_summary.technical_score
+            elif current_stage_id == 3:
+                score = evaluation_summary.managerial_score
+            elif current_stage_id == 4:
+                score = evaluation_summary.hr_score
+
+        feedback_data["overall_score"] = score
+
+        return {"success": True, "data": feedback_data}
     except HTTPException:
         raise
     except Exception as e:
@@ -1996,11 +2016,12 @@ def extract_bullet_points(text: str) -> list:
     return lines
 
 
-@router.get("/evaluation-summary")
-def get_evaluation_summary(
-    application_id: int = Query(...),
+@router.post("/calculate-evaluation-summary")
+def calculate_evaluation_summary(
+    data: CalculateEvaluationSummaryRequest,
     session: Session = Depends(deps.get_session),
 ):
+    application_id = data.application_id
     logger.info(f"Fetching evaluation summary for application_id: {application_id}")
     try:
         # Fetch job application
@@ -2076,10 +2097,15 @@ def get_evaluation_summary(
                 "round_type": "AI Interview",
                 "interviewer_name": "AI System",
                 "interview_mode": "Online",
-                "score": interview_analysis.total_score,
+                "overall_score": interview_analysis.total_score,
                 "score_percentage": interview_analysis.total_score,
                 "recommendation": interview_analysis.recommendation or "Completed"
             })
+
+        technical_score = None
+        managerial_score = None
+        hr_score = None
+        ai_score = interview_analysis.total_score if interview_analysis else None
 
         # Process human rounds from tb_interview_feedback table directly
         for idx, fb in enumerate(feedback_list):
@@ -2096,15 +2122,25 @@ def get_evaluation_summary(
                 # Normalizing 1-5 rating to 100 percentage
                 score_percentage = (score / 5.0) * 100 if score <= 5 else score
                 all_scores.append(score_percentage)
+                
+                # Assign to specific score variables based on round type
+                round_type_lower = round_type.lower()
+                if "technical" in round_type_lower:
+                    technical_score = score_percentage
+                elif "manager" in round_type_lower or "managerial" in round_type_lower:
+                    managerial_score = score_percentage
+                elif "hr" in round_type_lower:
+                    hr_score = score_percentage
             else:
                 score_percentage = None
 
             rounds_performance.append({
                 "round_number": round_num,
                 "round_type": round_type,
+                "current_stage_id": fb.current_stage_id,
                 "interviewer_name": interviewer_name,
                 "interview_mode": fb.interview_mode or "N/A",
-                "score": score,
+                "overall_score": score,
                 "score_percentage": score_percentage,
                 "recommendation": "HIRE" if fb.decision and fb.decision.strip().upper() == "SELECTED" else (fb.decision or "Completed"),
                 "feedback_details": {
@@ -2148,12 +2184,42 @@ def get_evaluation_summary(
         else:
             ai_recommendation_text = "AI evaluation pending or not started."
 
+        # Store the calculated evaluation summary data in the database
+        evaluation_summary = session.exec(
+            select(models.EvaluationSummary).where(
+                models.EvaluationSummary.application_id == application_id
+            )
+        ).first()
+
+        if not evaluation_summary:
+            evaluation_summary = models.EvaluationSummary(application_id=application_id)
+
+        evaluation_summary.candidate_name = f"{job_application.first_name} {job_application.last_name}" if job_application else "N/A"
+        evaluation_summary.candidate_email = job_application.email if job_application else "N/A"
+        evaluation_summary.total_rounds_completed = completed_rounds_count
+        evaluation_summary.total_rounds = total_rounds
+        evaluation_summary.average_score_across_rounds = average_score_across_rounds
+        evaluation_summary.status = "PASS" if getattr(job_application, "in_person_interviews", False) else (job_application.current_stage or "INTERVIEW")
+        evaluation_summary.rounds_performance = rounds_performance
+        evaluation_summary.consolidated_evaluation = {
+            "key_strengths": key_strengths,
+            "areas_of_improvement": areas_of_improvement
+        }
+        evaluation_summary.technical_score = technical_score
+        evaluation_summary.managerial_score = managerial_score
+        evaluation_summary.hr_score = hr_score
+        evaluation_summary.ai_score = ai_score
+        evaluation_summary.ai_recommendation_status = final_ai_decision
+        evaluation_summary.created_at = timezone_utils.get_ist_now()
+
+        session.add(evaluation_summary)
+        session.commit()
+
         return {
             "success": True,
             "data": {
                 "candidate_name": f"{job_application.first_name} {job_application.last_name}" if job_application else "N/A",
                 "candidate_email": job_application.email if job_application else "N/A",
-                "average_ai_score": average_ai_score,
                 "total_rounds_completed": completed_rounds_count,
                 "total_rounds": total_rounds,
                 "average_score_across_rounds": average_score_across_rounds,
@@ -2161,18 +2227,65 @@ def get_evaluation_summary(
                 "rounds_performance": rounds_performance,
                 "consolidated_evaluation": {
                     "key_strengths": key_strengths,
-                    "areas_of_improvement": areas_of_improvement,
-                    "ai_recommendation": {
-                        "status": final_ai_decision,
-                        "text": ai_recommendation_text,
-                        "score": round(average_score_across_rounds, 1) if average_score_across_rounds is not None else None
-                    }
-                }
+                    "areas_of_improvement": areas_of_improvement
+                },
+                "technical_score": technical_score,
+                "managerial_score": managerial_score,
+                "hr_score": hr_score,
+                "ai_score": ai_score,
+                "ai_recommendation_status": final_ai_decision
             }
         }
 
     except Exception as e:
         logger.error(f"Error fetching evaluation summary: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch evaluation summary: {str(e)}"
+        )
+
+
+@router.get("/evaluation-summary")
+def get_evaluation_summary(
+    application_id: int = Query(...),
+    session: Session = Depends(deps.get_session),
+):
+    logger.info(f"Fetching stored evaluation summary for application_id: {application_id}")
+    try:
+        evaluation_summary = session.exec(
+            select(models.EvaluationSummary).where(
+                models.EvaluationSummary.application_id == application_id
+            )
+        ).first()
+
+        if not evaluation_summary:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Evaluation summary not found for ID: {application_id}"
+            )
+
+        return {
+            "success": True,
+            "data": {
+                "candidate_name": evaluation_summary.candidate_name,
+                "candidate_email": evaluation_summary.candidate_email,
+                "total_rounds_completed": evaluation_summary.total_rounds_completed,
+                "total_rounds": evaluation_summary.total_rounds,
+                "average_score_across_rounds": evaluation_summary.average_score_across_rounds,
+                "status": evaluation_summary.status,
+                "rounds_performance": evaluation_summary.rounds_performance,
+                "consolidated_evaluation": evaluation_summary.consolidated_evaluation,
+                "technical_score": evaluation_summary.technical_score,
+                "managerial_score": evaluation_summary.managerial_score,
+                "hr_score": evaluation_summary.hr_score,
+                "ai_score": evaluation_summary.ai_score,
+                "ai_recommendation_status": evaluation_summary.ai_recommendation_status
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching evaluation summary from DB: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch evaluation summary: {str(e)}"
