@@ -2260,7 +2260,7 @@ def get_evaluation_summary(
 
         if not evaluation_summary:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=status.HTTP_204_NO_CONTENT,
                 detail=f"Evaluation summary not found for ID: {application_id}"
             )
 

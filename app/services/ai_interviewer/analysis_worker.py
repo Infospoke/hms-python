@@ -352,7 +352,6 @@ class AnalysisWorker(threading.Thread):
 
             count = len(all_responses)
             interview_analysis.total_score = round(total_score_sum / count, 1)
-
             if interview_analysis.total_score >= 85.0:
                 interview_analysis.recommendation = "STRONG HIRE"
             elif interview_analysis.total_score >= 70.0:
@@ -369,21 +368,31 @@ class AnalysisWorker(threading.Thread):
                 session, interview_analysis.application_id
             )
 
-            activity_feed = models.ActivityFeed(
-                timestamp=timezone_utils.get_ist_now(),
-                activity=f"Interview completed for {candidate_name}",
-            )
-            session.add(activity_feed)
-
+            job_title = ""
+            job_details_row = None
             try:
                 job_id = interview_analysis.job_id
-                
                 job_details_row = session.exec(
                     select(models.CreateJobDetails).where(                        
                         models.CreateJobDetails.job_id == job_id
                     )
                 ).first()
-                
+                if job_details_row and job_details_row.job_title:
+                    job_title = job_details_row.job_title
+            except Exception as e:
+                logger.error(f"Error fetching job details for activity feed: {e}")
+
+            activity_message = f"AI interview completed successfully for {candidate_name}"
+            if job_title:
+                activity_message += f" for {job_title}"
+
+            activity_feed = models.ActivityFeed(
+                timestamp=timezone_utils.get_ist_now(),
+                activity=activity_message,
+            )
+            session.add(activity_feed)
+
+            try:
                 if job_details_row and job_details_row.plan_id is not None:
                     plan_id = job_details_row.plan_id
 
