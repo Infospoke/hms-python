@@ -382,7 +382,7 @@ class AnalysisWorker(threading.Thread):
             except Exception as e:
                 logger.error(f"Error fetching job details for activity feed: {e}")
 
-            activity_message = f"AI interview completed successfully for {candidate_name}"
+            activity_message = f"AI interview completed for {candidate_name}"
             if job_title:
                 activity_message += f" for {job_title}"
 
