@@ -492,6 +492,7 @@ class AnalysisWorker(threading.Thread):
                             
                             current_stage.interview_completed = False
                             current_stage.interview_completed_on = timezone_utils.get_ist_now()
+                            current_stage.feedback_status = "pending"
                             
                             logger.info(
                                 f"Updating candidate {interview_analysis.application_id} current stage to next round stage {stage_id} "

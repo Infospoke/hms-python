@@ -612,6 +612,7 @@ class InterviewCurrentStage(SQLModel, table=True):
     interview_date: Optional[datetime] = Field(default=None)
     feedback: Optional[bool] = Field(default=None)
     round_order: Optional[int] = Field(default=None)
+    feedback_status: Optional[str] = Field(default="pending", max_length=255)
 
 
 class InterviewAssignment(SQLModel, table=True):
