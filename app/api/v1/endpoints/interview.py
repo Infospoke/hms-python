@@ -921,14 +921,12 @@ def start_interview_generation(interview_session_id: str, session: Session):
         )
     ).first()
 
-    # if (
-    #     interview_analysis
-    #     and interview_analysis.status == models.StatusEnum.in_progress
-    # ):
-    #     return {"error": "Interview is already started", "questions": []}
-    if True:
-        pass
-    elif (
+    if (
+        interview_analysis
+        and interview_analysis.status == models.StatusEnum.in_progress
+    ):
+        return {"error": "Interview is already started", "questions": []}
+    if (
         interview_analysis and interview_analysis.status == models.StatusEnum.completed
     ):
         return {"error": "Interview is already completed", "questions": []}
