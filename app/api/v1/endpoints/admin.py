@@ -32,6 +32,10 @@ from sqlmodel import Session, select
 from datetime import datetime
 from app.db.session import get_session
 from app import models
+from app.api import deps
+from app.schemas import OfferLetterRequest
+from app.services.offer_service import get_offer_details
+from app.services.reports.offer_letter_report import generate_offer_letter_pdf
 
 
 logger = logging.getLogger(__name__)
@@ -323,3 +327,39 @@ def candidate_rejected(
             status_code=500, detail="Failed to update candidate rejected status"
         )
 
+@router.post("/generate-offer-letter")
+def generate_offer_letter(
+    request: OfferLetterRequest,
+    db: Session = Depends(deps.get_session)
+):
+    try:
+        # Fetch the JSON data
+        data = get_offer_details(db, request)
+
+        # Generate the PDF
+        pdf_buffer = generate_offer_letter_pdf(data)
+        pdf_bytes = pdf_buffer.getvalue()
+
+        # Create filename
+        candidate_name = data.get("candidate_name", "Candidate").replace(" ", "_")
+        filename = f"{candidate_name}_Offer_Letter.pdf"
+
+        # Upload to MinIO
+        from app.services import minio_helper
+        object_name = f"offer-letters/{request.application_id}/{filename}"
+        upload_result = minio_helper.upload_pdf(pdf_bytes, object_name)
+        if not upload_result.get("success"):
+            print(f"Warning: Failed to upload offer letter to MinIO: {upload_result.get('error')}")
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        }
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers=headers,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
