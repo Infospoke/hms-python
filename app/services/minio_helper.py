@@ -114,6 +114,30 @@ def upload_image(image_content, object_name):
         logger.error(f"MinIO: error uploading image '{object_name}': {e}")
         return {"success": False, "error": f"Failed to upload image to MinIO: {e}"}
 
+def upload_pdf(pdf_content, object_name):
+    bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
+    ensure_bucket_exists(bucket_name)
+    logger.info(f"MinIO: uploading PDF content as '{object_name}'")
+    try:
+        minio_client = get_minio_client()
+        minio_client.put_object(
+            bucket_name,
+            object_name,
+            data=BytesIO(pdf_content),
+            length=len(pdf_content),
+            content_type="application/pdf",
+        )
+        minio_url = f"http://{consts.MINIO_HOST}/{bucket_name}/{object_name}"
+        logger.info(f"MinIO: successfully uploaded PDF to {minio_url}")
+        return {
+            "success": True,
+            "s3_url": minio_url,
+        }
+    except Exception as e:
+        logger.error(f"MinIO: error uploading PDF '{object_name}': {e}")
+        return {"success": False, "error": f"Failed to upload PDF to MinIO: {e}"}
+
+
 
 def list_proctoring_images(interview_session_id=None):
     bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME

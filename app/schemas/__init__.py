@@ -364,3 +364,12 @@ class FetchInterviewFeedbackRequest(BaseModel):
 
 class CalculateEvaluationSummaryRequest(BaseModel):
     application_id: int
+
+class OfferLetterRequest(BaseModel):
+    application_id: int
+    job_id: int
+    basic_salary: float
+    signing_bonus: float
+    equity_rsu: float
+    other_benefits: float
+    notice_period: str
