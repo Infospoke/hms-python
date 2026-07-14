@@ -9,6 +9,25 @@ from app.core import messages
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# The system prompt schema (config.json) asks the LLM for plain field names,
+# but downstream code (this file's _validate_analysis, ScoringEngine,
+# ResumeAnalyzer.structure_web_json) reads the "tb_"-prefixed equivalents.
+# Without this mapping those fields default to [] on every analysis, which
+# also zeroes out skills_match via the required_skills_count fallback.
+TB_FIELD_ALIASES = {
+    "tb_matching_skills": "matching_skills",
+    "tb_missing_skills": "missing_skills",
+    "tb_matching_experience": "matching_experience",
+    "tb_experience_gaps": "experience_gaps",
+    "tb_education_highlights": "education_highlights",
+    "tb_matching_education": "matching_education",
+    "tb_missing_education": "missing_education",
+    "tb_strengths": "strengths",
+    "tb_weaknesses": "weaknesses",
+    "tb_cultural_fit_indicators": "cultural_fit_indicators",
+    "tb_interview_focus_areas": "interview_focus_areas",
+}
+
 
 # --- RESUME ANALYSIS CLIENT ---
 
@@ -89,6 +108,7 @@ class Client(GeminiClient):
                     final_analysis.get("total_jobs_count", 0) == 0
                 )
             final_analysis = self._enforce_resume_evidence(final_analysis, resume_text)
+            final_analysis = self._apply_tb_field_aliases(final_analysis)
             validated_analysis = self._validate_analysis(final_analysis)
             return {
                 "success": True,
@@ -177,6 +197,12 @@ class Client(GeminiClient):
             analysis["recommendation"] = "REJECT"
             analysis["recommendation_reason"] = "Insufficient resume data"
 
+        return analysis
+
+    def _apply_tb_field_aliases(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+        for tb_key, source_key in TB_FIELD_ALIASES.items():
+            if tb_key not in analysis and source_key in analysis:
+                analysis[tb_key] = analysis[source_key]
         return analysis
 
     def _validate_analysis(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
