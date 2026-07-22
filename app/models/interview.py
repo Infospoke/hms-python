@@ -138,6 +138,7 @@ class EvaluationSummary(SQLModel, table=True):
     candidate_email: Optional[str] = Field(default=None, max_length=255)
     total_rounds_completed: Optional[int] = Field(default=None)
     total_rounds: Optional[int] = Field(default=None)
+    total_questions_count: Optional[int] = Field(default=None)
     average_score_across_rounds: Optional[float] = Field(default=None)
     status: Optional[str] = Field(default=None, max_length=255)
     rounds_performance: Optional[List[Dict[str, Any]]] = Field(

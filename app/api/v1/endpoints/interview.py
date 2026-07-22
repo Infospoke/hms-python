@@ -1967,6 +1967,24 @@ def fetch_interview_feedback(
         # Convert feedback to dictionary so we can add the score dynamically
         feedback_data = feedback.dict()
 
+        # Get the primary key id from User table based on feedback.user_id and override it in the response
+        if feedback.user_id:
+            user = session.exec(
+                select(models.User).where(models.User.user_id == feedback.user_id)
+            ).first()
+            if user:
+                feedback_data["user_id"] = user.id
+
+        # Get interview_completed_on from tb_interview_current_stage
+        current_stage_info = session.exec(
+            select(models.InterviewCurrentStage).where(
+                models.InterviewCurrentStage.application_id == application_id,
+                models.InterviewCurrentStage.current_stage_type == current_stage_id
+            )
+        ).first()
+
+        feedback_data["interview_completed_on"] = current_stage_info.interview_completed_on if current_stage_info else None
+
         # Query EvaluationSummary to fetch round scores
         evaluation_summary = session.exec(
             select(models.EvaluationSummary).where(
@@ -2196,6 +2214,7 @@ def calculate_evaluation_summary(
         evaluation_summary.candidate_email = job_application.email if job_application else "N/A"
         evaluation_summary.total_rounds_completed = completed_rounds_count
         evaluation_summary.total_rounds = total_rounds
+        evaluation_summary.total_questions_count = qna_count
         evaluation_summary.average_score_across_rounds = average_score_across_rounds
         evaluation_summary.status = "PASS" if getattr(job_application, "in_person_interviews", False) else (job_application.current_stage or "INTERVIEW")
         evaluation_summary.rounds_performance = rounds_performance
@@ -2220,6 +2239,7 @@ def calculate_evaluation_summary(
                 "candidate_email": job_application.email if job_application else "N/A",
                 "total_rounds_completed": completed_rounds_count,
                 "total_rounds": total_rounds,
+                "total_questions_count": qna_count,
                 "average_score_across_rounds": average_score_across_rounds,
                 "status": "PASS" if getattr(job_application, "in_person_interviews", False) else (job_application.current_stage or "INTERVIEW"),
                 "rounds_performance": rounds_performance,
