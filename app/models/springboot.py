@@ -658,3 +658,9 @@ class InterviewFeedback(SQLModel, table=True):
     submitted_by: Optional[str] = Field(default=None, max_length=255)
     user_id: Optional[int] = Field(default=None)
     interview_mode: Optional[str] = Field(default=None, max_length=255)
+
+class JobTitles(SQLModel, table=True):
+    __tablename__ = "tb_jobtitles"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_title: Optional[str] = Field(default=None, max_length=255)

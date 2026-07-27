@@ -1,6 +1,6 @@
 import logging
 import traceback
-from fastapi import APIRouter, HTTPException, status, Response
+from fastapi import APIRouter, HTTPException, status, Response, Query
 from fastapi.responses import JSONResponse
 from app.core import config as consts
 from app.schemas import (
@@ -363,3 +363,46 @@ def generate_offer_letter(
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+import time
+JOB_TITLE_CACHE = {}
+CACHE_TTL = 300  # 5 minutes in seconds
+
+@router.get("/job-titles/live-search")
+def live_search_job_titles(
+    q: str = Query("", description="Search query for job titles"),
+    session: Session = Depends(deps.get_session)
+):
+    query = q.strip().lower()
+    results = []
+    
+    if query:
+        # Check cache to remove continuous hitting
+        if query in JOB_TITLE_CACHE:
+            timestamp, cached_results = JOB_TITLE_CACHE[query]
+            if time.time() - timestamp < CACHE_TTL:
+                return JSONResponse({"results": cached_results})
+        
+        # Dynamic search using ilike
+        search_results = session.exec(
+            select(models.JobTitles)
+            .where(models.JobTitles.job_title.ilike(f"%{query}%"))
+            .order_by(models.JobTitles.id)
+            .limit(15)
+        ).all()
+        
+        for result in search_results:
+            results.append({
+                "id": result.id,
+                "job_title": result.job_title
+            })
+            
+        # Store in cache
+        JOB_TITLE_CACHE[query] = (time.time(), results)
+        
+        # Simple cache cleanup if it grows too large to prevent memory leak
+        if len(JOB_TITLE_CACHE) > 1000:
+            JOB_TITLE_CACHE.clear()
+            JOB_TITLE_CACHE[query] = (time.time(), results)
+            
+    return JSONResponse({"results": results})
