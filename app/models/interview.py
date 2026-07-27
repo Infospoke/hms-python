@@ -57,7 +57,7 @@ class InterviewSessions(SQLModel, table=(True)):
     move_to_schedule: bool = Field(default=False)
     move_to_schedule_datetime: Optional[datetime] = Field(default=None)
     scheduled_by: Optional[str] = Field(default=None, max_length=50)
-
+    interview_link: str = Field(max_length=500)
 
 
 

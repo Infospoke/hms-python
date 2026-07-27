@@ -96,6 +96,7 @@ def send_interview_link_email_sync(
     hashed_exam_exit_password = hashlib.sha256(exam_exit_password.encode()).hexdigest()
     
     interview_session.exam_exit_password = hashed_exam_exit_password
+    interview_session.interview_link = link
     db_session.add(interview_session)
     db_session.commit()
     db_session.refresh(interview_session)
