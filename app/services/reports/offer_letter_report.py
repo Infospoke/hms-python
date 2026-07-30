@@ -173,9 +173,6 @@ def generate_offer_letter_pdf(data: dict) -> io.BytesIO:
 
     elements.append(Paragraph("Sincerely,", style_normal))
     elements.append(Spacer(1, 0.2 * inch))
-    elements.append(Paragraph("<b>For NEXUS</b>", style_bold))
-    elements.append(Spacer(1, 0.5 * inch))
-    elements.append(Paragraph("<b>Name & Signature</b>", style_bold))
 
     # Page Break for Annexure
     elements.append(PageBreak())
@@ -298,3 +295,73 @@ def generate_offer_letter_pdf(data: dict) -> io.BytesIO:
 
     buffer.seek(0)
     return buffer
+
+def add_signature_to_pdf(original_pdf_bytes: bytes, candidate_name: str, accepted_date: str, signature_base64: str = None) -> bytes:
+    from pypdf import PdfReader, PdfWriter
+    from reportlab.pdfgen import canvas
+    import base64
+    import tempfile
+    signature_path = None
+    temp_sig_file = None
+    
+    if signature_base64:
+        # Handle prefix if present
+        if "," in signature_base64:
+            signature_base64 = signature_base64.split(",")[1]
+        try:
+            img_data = base64.b64decode(signature_base64)
+            temp_sig_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+            temp_sig_file.write(img_data)
+            temp_sig_file.close()
+            signature_path = temp_sig_file.name
+        except Exception as e:
+            print(f"Failed to decode base64 signature: {e}")
+            
+    # 1. First Page Overlay (Company Signature under "Sincerely,")
+    packet_first = io.BytesIO()
+    c_first = canvas.Canvas(packet_first, pagesize=A4)
+    if signature_path and os.path.exists(signature_path):
+        # Coordinates adjusted to be under "Sincerely,"
+        c_first.drawImage(signature_path, 55, 150, width=1.5*inch, height=0.6*inch, mask='auto')
+    c_first.showPage()
+    c_first.save()
+    packet_first.seek(0)
+    overlay_pdf_first = PdfReader(packet_first)
+    overlay_page_first = overlay_pdf_first.pages[0]
+    
+    # 2. Last Page Overlay (Company Signature above "Authorised Signatory")
+    packet_last = io.BytesIO()
+    c_last = canvas.Canvas(packet_last, pagesize=A4)
+    if signature_path and os.path.exists(signature_path):
+        # Coordinates adjusted to be above "Authorised Signatory"
+        c_last.drawImage(signature_path, 55, 195, width=1.5*inch, height=0.6*inch, mask='auto')
+    
+    # Optional: add candidate signature text and date if needed, but they just wanted the sign.png
+    c_last.showPage()
+    c_last.save()
+    packet_last.seek(0)
+    overlay_pdf_last = PdfReader(packet_last)
+    overlay_page_last = overlay_pdf_last.pages[0]
+    
+    original_pdf = PdfReader(io.BytesIO(original_pdf_bytes))
+    writer = PdfWriter()
+    
+    last_page_idx = len(original_pdf.pages) - 1
+    
+    for i, page in enumerate(original_pdf.pages):
+        if i == 0:
+            page.merge_page(overlay_page_first)
+        if i == last_page_idx:
+            page.merge_page(overlay_page_last)
+        writer.add_page(page)
+        
+    output = io.BytesIO()
+    writer.write(output)
+    
+    if temp_sig_file:
+        try:
+            os.remove(temp_sig_file.name)
+        except:
+            pass
+            
+    return output.getvalue()
