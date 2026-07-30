@@ -364,6 +364,93 @@ def generate_offer_letter(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+from pydantic import BaseModel
+from typing import Optional
+
+from fastapi import Form, File, UploadFile
+
+@router.post("/accept-offer")
+def accept_offer(
+    applicantId: Optional[str] = Form(None),
+    application_id: Optional[str] = Form(None),
+    approve: bool = Form(...),
+    comments: Optional[str] = Form(None),
+    signature: Optional[UploadFile] = File(None),
+    session: Session = Depends(get_session)
+):
+    try:
+        import io
+        from app.services import minio_helper
+        from app.services.reports.offer_letter_report import add_signature_to_pdf
+        from datetime import datetime
+
+        # Support both applicantId and application_id
+        final_applicant_id = applicantId or application_id
+        if not final_applicant_id:
+            raise Exception("applicantId or application_id is required")
+
+        # Get existing PDF from MinIO
+        minio_client = minio_helper.get_minio_client()
+        object_name = f"offer-letters/{final_applicant_id}/Naidu_Kunapareddy_Offer_Letter.pdf"
+        
+        try:
+            response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, object_name)
+            original_pdf_bytes = response.read()
+            response.close()
+            response.release_conn()
+        except Exception as e:
+            # Fallback search for any PDF in that folder
+            objects = minio_client.list_objects(consts.INFOSPOKE_S3_BUCKET_NAME, prefix=f"offer-letters/{final_applicant_id}/")
+            found = False
+            for obj in objects:
+                if obj.object_name.endswith('.pdf'):
+                    object_name = obj.object_name
+                    response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, object_name)
+                    original_pdf_bytes = response.read()
+                    response.close()
+                    response.release_conn()
+                    found = True
+                    break
+            if not found:
+                raise Exception(f"Offer letter PDF not found for applicant {final_applicant_id}")
+
+        # Extract signature base64 if a file was uploaded
+        import base64
+        signature_b64 = None
+        if signature:
+            sig_bytes = signature.file.read()
+            signature_b64 = base64.b64encode(sig_bytes).decode('utf-8')
+
+        # Add signatures
+        candidate_name = "Candidate" # Can fetch from DB if needed
+        accepted_date = datetime.now().strftime("%d-%m-%Y")
+        signed_pdf_bytes = add_signature_to_pdf(original_pdf_bytes, candidate_name, accepted_date, signature_b64)
+
+        # Upload signed PDF back
+        minio_client.put_object(
+            consts.INFOSPOKE_S3_BUCKET_NAME,
+            object_name,
+            data=io.BytesIO(signed_pdf_bytes),
+            length=len(signed_pdf_bytes),
+            content_type="application/pdf"
+        )
+        
+        filename = object_name.split("/")[-1]
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        }
+        return StreamingResponse(
+            io.BytesIO(signed_pdf_bytes),
+            media_type="application/pdf",
+            headers=headers,
+        )
+    except Exception as e:
+        logger.error(f"Failed to fetch/update PDF with signature: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to add signature to PDF: {e}")
+
 import time
 JOB_TITLE_CACHE = {}
 CACHE_TTL = 300  # 5 minutes in seconds
