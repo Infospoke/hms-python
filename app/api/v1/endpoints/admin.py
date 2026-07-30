@@ -369,7 +369,7 @@ from typing import Optional
 
 from fastapi import Form, File, UploadFile
 
-@router.post("/accept-offer")
+@router.post("/approved-offer")
 def accept_offer(
     applicantId: Optional[str] = Form(None),
     application_id: Optional[str] = Form(None),
