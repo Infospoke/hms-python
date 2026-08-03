@@ -664,3 +664,53 @@ class JobTitles(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     job_title: Optional[str] = Field(default=None, max_length=255)
+
+
+class OfferDetails(SQLModel, table=True):
+    __tablename__ = "tb_offer_details"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_application_id: Optional[int] = Field(default=None)
+    notice_period: Optional[str] = Field(default=None, max_length=255)
+    probation_period: Optional[str] = Field(default=None, max_length=255)
+    joining_date: Optional[date] = Field(default=None)
+    created_by_roleId: Optional[int] = Field(default=None)
+    submit_financial_approval: Optional[bool] = Field(default=False)
+    created_date: Optional[datetime] = Field(default=None)
+    responded_at: Optional[datetime] = Field(default=None)
+
+    approver1: Optional[bool] = Field(default=False)
+    approver1_by: Optional[str] = Field(default=None, max_length=255)
+    approver1_role: Optional[str] = Field(default=None, max_length=255)
+    date_of_approval1: Optional[datetime] = Field(default=None)
+    approver1_comments: Optional[str] = Field(default=None, sa_column=Column(Text))
+
+    approver2: Optional[bool] = Field(default=False)
+    approver2_by: Optional[str] = Field(default=None, max_length=255)
+    approver2_role: Optional[str] = Field(default=None, max_length=255)
+    approver2_comments: Optional[str] = Field(default=None, sa_column=Column(Text))
+    date_of_approval2: Optional[datetime] = Field(default=None)
+
+    approver3: Optional[bool] = Field(default=False)
+    approver3_by: Optional[str] = Field(default=None, max_length=255)
+    approver3_role: Optional[str] = Field(default=None, max_length=255)
+    approver3_comments: Optional[str] = Field(default=None, sa_column=Column(Text))
+    date_of_approval3: Optional[datetime] = Field(default=None)
+
+    reject: Optional[bool] = Field(default=False)
+    approve: Optional[bool] = Field(default=False)
+    final_approval_time: Optional[datetime] = Field(default=None)
+
+    offer_released: Optional[bool] = Field(default=False)
+    in_progress: Optional[bool] = Field(default=None)
+    submitted_by_user_id: Optional[int] = Field(default=None)
+    offer_released_by: Optional[int] = Field(default=None)
+    offer_released_at: Optional[datetime] = Field(default=None)
+
+    interview_completion_status: Optional[str] = Field(default=None, max_length=255)
+    interview_completion_date: Optional[datetime] = Field(default=None)
+    recruited_by: Optional[str] = Field(default=None, max_length=255)
+    total_ctc: Optional[int] = Field(default=None)
+    compensation: Optional[str] = Field(default=None, sa_column=Column(Text))
+    offer_letter_template_id: Optional[int] = Field(default=None)
+    offer_status: Optional[str] = Field(default=None, max_length=255)

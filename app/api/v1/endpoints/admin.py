@@ -369,9 +369,8 @@ from typing import Optional
 
 from fastapi import Form, File, UploadFile
 
-@router.post("/accept-offer")
-def accept_offer(
-    applicantId: Optional[str] = Form(None),
+@router.post("/approved-offer")
+def approve_offer(
     application_id: Optional[str] = Form(None),
     approve: bool = Form(...),
     comments: Optional[str] = Form(None),
@@ -384,10 +383,214 @@ def accept_offer(
         from app.services.reports.offer_letter_report import add_signature_to_pdf
         from datetime import datetime
 
-        # Support both applicantId and application_id
-        final_applicant_id = applicantId or application_id
+        if not application_id:
+            raise HTTPException(status_code=400, detail="application_id is required")
+
+        # Update OfferDetails status in database
+        try:
+            app_id_int = int(application_id)
+            offer_detail = session.exec(
+                select(models.OfferDetails).where(
+                    (models.OfferDetails.job_application_id == app_id_int) | 
+                    (models.OfferDetails.id == app_id_int)
+                )
+            ).first()
+
+            status_str = "Approved" if approve else "Rejected"
+            if offer_detail:
+                offer_detail.offer_status = status_str
+                offer_detail.approve = approve
+                offer_detail.reject = not approve
+                offer_detail.responded_at = datetime.now()
+                session.add(offer_detail)
+            else:
+                new_offer_detail = models.OfferDetails(
+                    job_application_id=app_id_int,
+                    offer_status=status_str,
+                    approve=approve,
+                    reject=not approve,
+                    responded_at=datetime.now()
+                )
+                session.add(new_offer_detail)
+
+            session.commit()
+        except Exception as db_err:
+            print(f"Warning: Failed to update OfferDetails in database: {db_err}")
+
+        # If offer is rejected, return JSON response
+        if not approve:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "Rejected",
+                    "offer_status": "Rejected",
+                    "message": "Offer rejected successfully"
+                }
+            )
+
+        # Get existing offer letter PDF from MinIO
+        minio_client = minio_helper.get_minio_client()
+        object_name = f"offer-letters/{application_id}/Naidu_Kunapareddy_Offer_Letter.pdf"
+        
+        try:
+            response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, object_name)
+            pdf_bytes = response.read()
+            response.close()
+            response.release_conn()
+        except Exception as e:
+            objects = minio_client.list_objects(consts.INFOSPOKE_S3_BUCKET_NAME, prefix=f"offer-letters/{application_id}/")
+            found = False
+            for obj in objects:
+                if obj.object_name.endswith('.pdf'):
+                    object_name = obj.object_name
+                    response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, object_name)
+                    pdf_bytes = response.read()
+                    response.close()
+                    response.release_conn()
+                    found = True
+                    break
+            if not found:
+                raise HTTPException(status_code=404, detail=f"Offer letter PDF not found for applicant {application_id}")
+
+        # Extract company signature base64 if uploaded
+        import base64
+        signature_b64 = None
+        if signature and hasattr(signature, "file"):
+            sig_bytes = signature.file.read()
+            if sig_bytes:
+                signature_b64 = base64.b64encode(sig_bytes).decode('utf-8')
+
+        approved_date = datetime.now().strftime("%d-%m-%Y")
+        if signature_b64:
+            pdf_bytes = add_signature_to_pdf(
+                original_pdf_bytes=pdf_bytes,
+                accepted_date=approved_date,
+                signature_base64=signature_b64,
+                is_company_signature=True
+            )
+            # Save signed PDF back to MinIO
+            minio_client.put_object(
+                consts.INFOSPOKE_S3_BUCKET_NAME,
+                object_name,
+                data=io.BytesIO(pdf_bytes),
+                length=len(pdf_bytes),
+                content_type="application/pdf"
+            )
+
+        filename = object_name.split("/")[-1]
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition, X-Offer-Status, X-Status, status",
+            "X-Offer-Status": "Approved",
+            "X-Status": "success",
+            "status": "success",
+        }
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers=headers,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to approve offer: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to approve offer: {e}")
+
+@router.post("/accept-offer")
+def accept_offer(
+    application_id: Optional[str] = Form(None),
+    approve: bool = Form(...),
+    comments: Optional[str] = Form(None),
+    signature: Optional[UploadFile] = File(None),
+    signature_text: Optional[str] = Form(None),
+    session: Session = Depends(get_session)
+):
+    return process_offer_action(
+        application_id=application_id,
+        approve=approve,
+        comments=comments,
+        signature=signature,
+        signature_text=signature_text,
+        session=session
+    )
+
+def process_offer_action(
+    application_id: Optional[str] = None,
+    approve: bool = True,
+    comments: Optional[str] = None,
+    signature: Optional[UploadFile] = None,
+    signature_text: Optional[str] = None,
+    session: Session = None
+):
+    try:
+        import io
+        from app.services import minio_helper
+        from app.services.reports.offer_letter_report import add_signature_to_pdf
+        from datetime import datetime
+
+        final_applicant_id = application_id
         if not final_applicant_id:
-            raise Exception("applicantId or application_id is required")
+            raise HTTPException(status_code=400, detail="application_id is required")
+
+        # Update OfferDetails status in database
+        try:
+            app_id_int = int(final_applicant_id)
+            
+            # 1. Update/Create OfferDetails
+            offer_detail = session.exec(
+                select(models.OfferDetails).where(
+                    (models.OfferDetails.job_application_id == app_id_int) | 
+                    (models.OfferDetails.id == app_id_int)
+                )
+            ).first()
+
+            status_str = "Approved" if approve else "Rejected"
+            if offer_detail:
+                offer_detail.offer_status = status_str
+                offer_detail.approve = approve
+                offer_detail.reject = not approve
+                offer_detail.responded_at = datetime.now()
+                session.add(offer_detail)
+            else:
+                new_offer_detail = models.OfferDetails(
+                    job_application_id=app_id_int,
+                    offer_status=status_str,
+                    approve=approve,
+                    reject=not approve,
+                    responded_at=datetime.now()
+                )
+                session.add(new_offer_detail)
+
+            session.commit()
+        except Exception as db_err:
+            print(f"Warning: Failed to update OfferDetails in database: {db_err}")
+
+        # If offer is rejected, return JSON response immediately
+        if not approve:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "Rejected",
+                    "offer_status": "Rejected",
+                    "message": "Offer rejected successfully"
+                }
+            )
+
+        # Get candidate name from DB
+        candidate_name = "Candidate"
+        try:
+            app_id_int = int(final_applicant_id)
+            job_app = session.exec(
+                select(models.JobApplications).where(models.JobApplications.id == app_id_int)
+            ).first()
+            if job_app:
+                names = [n for n in [job_app.first_name, job_app.last_name] if n]
+                if names:
+                    candidate_name = " ".join(names)
+        except Exception as e:
+            print(f"Could not fetch candidate name: {e}")
 
         # Get existing PDF from MinIO
         minio_client = minio_helper.get_minio_client()
@@ -412,39 +615,53 @@ def accept_offer(
                     found = True
                     break
             if not found:
-                raise Exception(f"Offer letter PDF not found for applicant {final_applicant_id}")
+                raise HTTPException(status_code=404, detail=f"Offer letter PDF not found for applicant {final_applicant_id}")
 
         # Extract signature base64 if a file was uploaded
         import base64
         signature_b64 = None
-        if signature:
+        if signature and hasattr(signature, "file"):
             sig_bytes = signature.file.read()
-            signature_b64 = base64.b64encode(sig_bytes).decode('utf-8')
+            if sig_bytes:
+                signature_b64 = base64.b64encode(sig_bytes).decode('utf-8')
 
-        # Add signatures
-        candidate_name = "Candidate" # Can fetch from DB if needed
-        accepted_date = datetime.now().strftime("%d-%m-%Y")
-        signed_pdf_bytes = add_signature_to_pdf(original_pdf_bytes, candidate_name, accepted_date, signature_b64)
+        effective_sig_text = signature_text.strip() if (signature_text and signature_text.strip()) else None
 
-        # Upload signed PDF back
-        minio_client.put_object(
-            consts.INFOSPOKE_S3_BUCKET_NAME,
-            object_name,
-            data=io.BytesIO(signed_pdf_bytes),
-            length=len(signed_pdf_bytes),
-            content_type="application/pdf"
-        )
+        # Apply signature overlay only if a signature file or typed text is provided
+        if signature_b64 or effective_sig_text:
+            signed_pdf_bytes = add_signature_to_pdf(
+                original_pdf_bytes=original_pdf_bytes,
+                candidate_name=candidate_name,
+                signature_base64=signature_b64,
+                signature_text=effective_sig_text
+            )
+
+            # Upload signed PDF back to MinIO
+            minio_client.put_object(
+                consts.INFOSPOKE_S3_BUCKET_NAME,
+                object_name,
+                data=io.BytesIO(signed_pdf_bytes),
+                length=len(signed_pdf_bytes),
+                content_type="application/pdf"
+            )
+        else:
+            signed_pdf_bytes = original_pdf_bytes
         
         filename = object_name.split("/")[-1]
         headers = {
             "Content-Disposition": f'attachment; filename="{filename}"',
-            "Access-Control-Expose-Headers": "Content-Disposition",
+            "Access-Control-Expose-Headers": "Content-Disposition, X-Offer-Status, X-Status, status",
+            "X-Offer-Status": "Approved",
+            "X-Status": "success",
+            "status": "success",
         }
         return StreamingResponse(
             io.BytesIO(signed_pdf_bytes),
             media_type="application/pdf",
             headers=headers,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to fetch/update PDF with signature: {e}")
         import traceback
