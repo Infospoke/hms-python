@@ -317,19 +317,39 @@ def add_signature_to_pdf(
             signature_base64 = signature_base64.split(",")[1]
         try:
             img_data = base64.b64decode(signature_base64)
+            # Verify if img_data is a valid image using PIL
+            from PIL import Image
+            img = Image.open(io.BytesIO(img_data))
+            img.verify()
+
             temp_sig_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
             temp_sig_file.write(img_data)
             temp_sig_file.close()
             signature_path = temp_sig_file.name
         except Exception as e:
-            print(f"Failed to decode base64 signature: {e}")
+            print(f"Failed to decode base64 signature or invalid image format: {e}")
+            signature_path = None
+            # Fallback: if signature_text is not set but img_data was plain string, use it
+            if not signature_text:
+                try:
+                    text_cand = img_data.decode('utf-8').strip()
+                    if text_cand and len(text_cand) < 100:
+                        signature_text = text_cand
+                except Exception:
+                    pass
             
     # 1. First Page Overlay (Company Signature under "Sincerely,")
     packet_first = io.BytesIO()
     c_first = canvas.Canvas(packet_first, pagesize=A4)
-    if is_company_signature and signature_path and os.path.exists(signature_path):
-        # Company signature under "Sincerely," on Page 1
-        c_first.drawImage(signature_path, 55, 140, width=1.5*inch, height=0.6*inch, mask='auto')
+    if is_company_signature:
+        if signature_path and os.path.exists(signature_path):
+            # Company signature under "Sincerely," on Page 1
+            c_first.drawImage(signature_path, 100, 150, width=1.5*inch, height=0.6*inch, mask='auto')
+        elif signature_text:
+            # Company typed signature text under "Sincerely," on Page 1
+            c_first.setFont("Helvetica-Oblique", 14)
+            c_first.setFillColorRGB(0.0, 0.15, 0.45) # Navy blue signature ink
+            c_first.drawString(105, 165, signature_text)
     c_first.showPage()
     c_first.save()
     packet_first.seek(0)
@@ -342,19 +362,21 @@ def add_signature_to_pdf(
     if is_company_signature:
         if signature_path and os.path.exists(signature_path):
             # Authorised Signatory signature on LEFT side above "Authorised Signatory"
-            c_last.drawImage(signature_path, 55, 195, width=1.5*inch, height=0.6*inch, mask='auto')
+            c_last.drawImage(signature_path, 100, 195, width=1.5*inch, height=0.6*inch, mask='auto')
+        elif signature_text:
+            # Authorised Signatory typed signature text on LEFT side
+            c_last.setFont("Helvetica-Oblique", 14)
+            c_last.setFillColorRGB(0.0, 0.15, 0.45)
+            c_last.drawString(105, 205, signature_text)
     else:
         if signature_path and os.path.exists(signature_path):
             # Candidate signature on RIGHT side above "Candidate's Signature"
-            c_last.drawImage(signature_path, 350, 195, width=1.5*inch, height=0.6*inch, mask='auto')
+            c_last.drawImage(signature_path, 380, 195, width=1.5*inch, height=0.6*inch, mask='auto')
         elif signature_text:
             # Candidate typed signature text on RIGHT side
             c_last.setFont("Helvetica-Oblique", 14)
             c_last.setFillColorRGB(0.0, 0.15, 0.45) # Navy blue signature ink
-            c_last.drawString(350, 205, signature_text)
-            c_last.setLineWidth(0.5)
-            c_last.setStrokeColorRGB(0.2, 0.2, 0.6)
-            c_last.line(350, 200, 480, 200)
+            c_last.drawString(385, 205, signature_text)
 
     c_last.showPage()
     c_last.save()

@@ -370,11 +370,12 @@ from typing import Optional
 from fastapi import Form, File, UploadFile
 
 @router.post("/approved-offer")
-def approve_offer(
+def approved_offer(
     application_id: Optional[str] = Form(None),
     approve: bool = Form(...),
     comments: Optional[str] = Form(None),
     signature: Optional[UploadFile] = File(None),
+    signature_type: Optional[str] = Form(None),
     session: Session = Depends(get_session)
 ):
     try:
@@ -460,12 +461,15 @@ def approve_offer(
             if sig_bytes:
                 signature_b64 = base64.b64encode(sig_bytes).decode('utf-8')
 
+        effective_sig_text = signature_type.strip() if (signature_type and str(signature_type).strip()) else None
+
         approved_date = datetime.now().strftime("%d-%m-%Y")
-        if signature_b64:
+        if signature_b64 or effective_sig_text:
             pdf_bytes = add_signature_to_pdf(
                 original_pdf_bytes=pdf_bytes,
                 accepted_date=approved_date,
                 signature_base64=signature_b64,
+                signature_text=effective_sig_text,
                 is_company_signature=True
             )
             # Save signed PDF back to MinIO
@@ -504,7 +508,7 @@ def accept_offer(
     approve: bool = Form(...),
     comments: Optional[str] = Form(None),
     signature: Optional[UploadFile] = File(None),
-    signature_text: Optional[str] = Form(None),
+    signature_type: Optional[str] = Form(None),
     session: Session = Depends(get_session)
 ):
     return process_offer_action(
@@ -512,7 +516,7 @@ def accept_offer(
         approve=approve,
         comments=comments,
         signature=signature,
-        signature_text=signature_text,
+        signature_type=signature_type,
         session=session
     )
 
@@ -521,7 +525,7 @@ def process_offer_action(
     approve: bool = True,
     comments: Optional[str] = None,
     signature: Optional[UploadFile] = None,
-    signature_text: Optional[str] = None,
+    signature_type: Optional[str] = None,
     session: Session = None
 ):
     try:
@@ -625,7 +629,7 @@ def process_offer_action(
             if sig_bytes:
                 signature_b64 = base64.b64encode(sig_bytes).decode('utf-8')
 
-        effective_sig_text = signature_text.strip() if (signature_text and signature_text.strip()) else None
+        effective_sig_text = signature_type.strip() if (signature_type and str(signature_type).strip()) else None
 
         # Apply signature overlay only if a signature file or typed text is provided
         if signature_b64 or effective_sig_text:
