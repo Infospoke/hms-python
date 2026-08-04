@@ -369,6 +369,8 @@ class CalculateEvaluationSummaryRequest(BaseModel):
 class OfferLetterRequest(BaseModel):
     application_id: int
     job_id: int
+    candidate_id: int
+    offer_id: int
     basic_salary: float
     signing_bonus: float
     equity_rsu: float
