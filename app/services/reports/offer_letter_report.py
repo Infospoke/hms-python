@@ -296,7 +296,14 @@ def generate_offer_letter_pdf(data: dict) -> io.BytesIO:
     buffer.seek(0)
     return buffer
 
-def add_signature_to_pdf(original_pdf_bytes: bytes, candidate_name: str, accepted_date: str, signature_base64: str = None) -> bytes:
+def add_signature_to_pdf(
+    original_pdf_bytes: bytes,
+    candidate_name: str = "Candidate",
+    accepted_date: str = None,
+    signature_base64: str = None,
+    signature_text: str = None,
+    is_company_signature: bool = False
+) -> bytes:
     from pypdf import PdfReader, PdfWriter
     from reportlab.pdfgen import canvas
     import base64
@@ -320,23 +327,35 @@ def add_signature_to_pdf(original_pdf_bytes: bytes, candidate_name: str, accepte
     # 1. First Page Overlay (Company Signature under "Sincerely,")
     packet_first = io.BytesIO()
     c_first = canvas.Canvas(packet_first, pagesize=A4)
-    if signature_path and os.path.exists(signature_path):
-        # Coordinates adjusted to be under "Sincerely,"
-        c_first.drawImage(signature_path, 55, 150, width=1.5*inch, height=0.6*inch, mask='auto')
+    if is_company_signature and signature_path and os.path.exists(signature_path):
+        # Company signature under "Sincerely," on Page 1
+        c_first.drawImage(signature_path, 55, 140, width=1.5*inch, height=0.6*inch, mask='auto')
     c_first.showPage()
     c_first.save()
     packet_first.seek(0)
     overlay_pdf_first = PdfReader(packet_first)
     overlay_page_first = overlay_pdf_first.pages[0]
     
-    # 2. Last Page Overlay (Company Signature above "Authorised Signatory")
+    # 2. Last Page Overlay
     packet_last = io.BytesIO()
     c_last = canvas.Canvas(packet_last, pagesize=A4)
-    if signature_path and os.path.exists(signature_path):
-        # Coordinates adjusted to be above "Authorised Signatory"
-        c_last.drawImage(signature_path, 55, 195, width=1.5*inch, height=0.6*inch, mask='auto')
-    
-    # Optional: add candidate signature text and date if needed, but they just wanted the sign.png
+    if is_company_signature:
+        if signature_path and os.path.exists(signature_path):
+            # Authorised Signatory signature on LEFT side above "Authorised Signatory"
+            c_last.drawImage(signature_path, 55, 195, width=1.5*inch, height=0.6*inch, mask='auto')
+    else:
+        if signature_path and os.path.exists(signature_path):
+            # Candidate signature on RIGHT side above "Candidate's Signature"
+            c_last.drawImage(signature_path, 350, 195, width=1.5*inch, height=0.6*inch, mask='auto')
+        elif signature_text:
+            # Candidate typed signature text on RIGHT side
+            c_last.setFont("Helvetica-Oblique", 14)
+            c_last.setFillColorRGB(0.0, 0.15, 0.45) # Navy blue signature ink
+            c_last.drawString(350, 205, signature_text)
+            c_last.setLineWidth(0.5)
+            c_last.setStrokeColorRGB(0.2, 0.2, 0.6)
+            c_last.line(350, 200, 480, 200)
+
     c_last.showPage()
     c_last.save()
     packet_last.seek(0)
