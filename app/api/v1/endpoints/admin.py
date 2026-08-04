@@ -42,6 +42,38 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+def build_offer_letter_filename(candidate_id=None, offer_id=None, candidate_name=None, base_pdf_name="Offer_Letter.pdf") -> str:
+    from datetime import datetime
+    year_str = str(datetime.now().year)
+
+    cid_str = str(candidate_id).strip() if candidate_id is not None else ""
+    if cid_str:
+        if cid_str.isdigit():
+            formatted_cid = f"{int(cid_str):04d}"
+            cid_part = f"CID-{year_str}-{formatted_cid}"
+        else:
+            if cid_str.upper().startswith("CID-"):
+                cid_part = cid_str
+            elif cid_str.startswith(f"{year_str}-"):
+                cid_part = f"CID-{cid_str}"
+            else:
+                cid_part = f"CID-{year_str}-{cid_str}"
+    else:
+        cid_part = f"CID-{year_str}-0000"
+
+    off_str = str(offer_id).strip() if offer_id is not None else "0"
+    cname_str = (candidate_name or "Candidate").strip().replace(" ", "_")
+
+    clean_pdf_name = (base_pdf_name or "Offer_Letter.pdf").strip()
+    if clean_pdf_name.endswith(".pdf"):
+        clean_pdf_name = clean_pdf_name[:-4]
+    if "_" in clean_pdf_name and "Offer_Letter" in clean_pdf_name:
+        clean_pdf_name = "Offer_Letter"
+    clean_pdf_name = f"{clean_pdf_name}.pdf"
+
+    # Format: CID-{year}-{candidate_id}-{offer_id}-{candidate_name}-{pdfname}
+    return f"{cid_part}-{off_str}-{cname_str}-{clean_pdf_name}"
+
 
 @router.post("/config/refresh")
 def refresh_interview_configs():
@@ -326,7 +358,6 @@ def candidate_rejected(
         raise HTTPException(
             status_code=500, detail="Failed to update candidate rejected status"
         )
-
 @router.post("/generate-offer-letter")
 def generate_offer_letter(
     request: OfferLetterRequest,
@@ -340,13 +371,21 @@ def generate_offer_letter(
         pdf_buffer = generate_offer_letter_pdf(data)
         pdf_bytes = pdf_buffer.getvalue()
 
-        # Create filename
-        candidate_name = data.get("candidate_name", "Candidate").replace(" ", "_")
-        filename = f"{candidate_name}_Offer_Letter.pdf"
+        # Create filename in format CID-{candidate_id}-{offer_id}-{candidate_name}-{pdfname}
+        candidate_name = data.get("candidate_name", "Candidate")
+        cand_id = request.candidate_id or request.application_id
+        off_id = request.offer_id or data.get("offer_id") or request.application_id
 
-        # Upload to MinIO
+        filename = build_offer_letter_filename(
+            candidate_id=cand_id,
+            offer_id=off_id,
+            candidate_name=candidate_name,
+            base_pdf_name=f"{candidate_name.replace(' ', '_')}_Offer_Letter.pdf"
+        )
+
+        # Upload to MinIO (directly in offer-letters/ without application_id subfolder)
         from app.services import minio_helper
-        object_name = f"offer-letters/{request.application_id}/{filename}"
+        object_name = f"offer-letters/{filename}"
         upload_result = minio_helper.upload_pdf(pdf_bytes, object_name)
         if not upload_result.get("success"):
             print(f"Warning: Failed to upload offer letter to MinIO: {upload_result.get('error')}")
@@ -372,6 +411,8 @@ from fastapi import Form, File, UploadFile
 @router.post("/approved-offer")
 def approved_offer(
     application_id: Optional[str] = Form(None),
+    candidate_id: Optional[str] = Form(None),
+    offer_id: Optional[str] = Form(None),
     approve: bool = Form(...),
     comments: Optional[str] = Form(None),
     signature: Optional[UploadFile] = File(None),
@@ -417,6 +458,10 @@ def approved_offer(
             session.commit()
         except Exception as db_err:
             print(f"Warning: Failed to update OfferDetails in database: {db_err}")
+            try:
+                session.rollback()
+            except Exception:
+                pass
 
         # If offer is rejected, return JSON response
         if not approve:
@@ -429,29 +474,74 @@ def approved_offer(
                 }
             )
 
-        # Get existing offer letter PDF from MinIO
+        eff_cand_id = candidate_id or application_id
+        eff_offer_id = offer_id or application_id
+
+        # Fetch candidate name from DB to construct exact filename
+        candidate_name = "Candidate"
+        try:
+            raw_cid = str(eff_cand_id).replace("CID-", "").split("-")[-1]
+            lookup_id = int(raw_cid) if raw_cid.isdigit() else int(application_id)
+            job_app = session.exec(
+                select(models.JobApplications).where(models.JobApplications.id == lookup_id)
+            ).first()
+            if job_app:
+                names = [n for n in [job_app.first_name, job_app.last_name] if n]
+                if names:
+                    candidate_name = " ".join(names)
+        except Exception as e:
+            print(f"Could not fetch candidate name: {e}")
+
+        cand_filename = build_offer_letter_filename(
+            candidate_id=eff_cand_id,
+            offer_id=eff_offer_id,
+            candidate_name=candidate_name,
+            base_pdf_name=f"{candidate_name.replace(' ', '_')}_Offer_Letter.pdf"
+        )
+        object_name = f"offer-letters/{cand_filename}"
+
+        # Get existing offer letter PDF from MinIO (direct file in offer-letters/)
         minio_client = minio_helper.get_minio_client()
-        object_name = f"offer-letters/{application_id}/Naidu_Kunapareddy_Offer_Letter.pdf"
-        
+        pdf_bytes = None
         try:
             response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, object_name)
             pdf_bytes = response.read()
             response.close()
             response.release_conn()
-        except Exception as e:
-            objects = minio_client.list_objects(consts.INFOSPOKE_S3_BUCKET_NAME, prefix=f"offer-letters/{application_id}/")
-            found = False
-            for obj in objects:
-                if obj.object_name.endswith('.pdf'):
-                    object_name = obj.object_name
-                    response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, object_name)
-                    pdf_bytes = response.read()
-                    response.close()
-                    response.release_conn()
-                    found = True
-                    break
-            if not found:
-                raise HTTPException(status_code=404, detail=f"Offer letter PDF not found for applicant {application_id}")
+        except Exception:
+            # Fallback 1: Search direct PDF files in offer-letters/
+            try:
+                objects = minio_client.list_objects(consts.INFOSPOKE_S3_BUCKET_NAME, prefix="offer-letters/")
+                for obj in objects:
+                    oname = obj.object_name
+                    if oname.endswith('.pdf') and ("/" not in oname[14:]):
+                        if candidate_name.replace(' ', '_').lower() in oname.lower() or str(application_id) in oname:
+                            response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, oname)
+                            pdf_bytes = response.read()
+                            response.close()
+                            response.release_conn()
+                            object_name = oname
+                            break
+            except Exception:
+                pass
+
+        # Fallback 3: Pick any existing PDF in offer-letters/
+        if not pdf_bytes:
+            try:
+                objects = minio_client.list_objects(consts.INFOSPOKE_S3_BUCKET_NAME, prefix="offer-letters/", recursive=True)
+                for obj in objects:
+                    if obj.object_name.endswith('.pdf'):
+                        response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, obj.object_name)
+                        pdf_bytes = response.read()
+                        response.close()
+                        response.release_conn()
+                        object_name = obj.object_name
+                        break
+            except Exception:
+                pass
+
+        if not pdf_bytes:
+            raise HTTPException(status_code=404, detail=f"Offer letter PDF not found for applicant {application_id}")
 
         # Extract company signature base64 if uploaded
         import base64
@@ -487,6 +577,7 @@ def approved_offer(
             status_code=200,
             content={
                 "status": "Successfully approved offer",
+                "path": object_name,
                 "pdf": pdf_b64,
             }
         )
@@ -501,6 +592,8 @@ def approved_offer(
 @router.post("/accept-offer")
 def accept_offer(
     application_id: Optional[str] = Form(None),
+    candidate_id: Optional[str] = Form(None),
+    offer_id: Optional[str] = Form(None),
     approve: bool = Form(...),
     comments: Optional[str] = Form(None),
     signature: Optional[UploadFile] = File(None),
@@ -509,6 +602,8 @@ def accept_offer(
 ):
     return process_offer_action(
         application_id=application_id,
+        candidate_id=candidate_id,
+        offer_id=offer_id,
         approve=approve,
         comments=comments,
         signature=signature,
@@ -518,6 +613,8 @@ def accept_offer(
 
 def process_offer_action(
     application_id: Optional[str] = None,
+    candidate_id: Optional[str] = None,
+    offer_id: Optional[str] = None,
     approve: bool = True,
     comments: Optional[str] = None,
     signature: Optional[UploadFile] = None,
@@ -566,6 +663,10 @@ def process_offer_action(
             session.commit()
         except Exception as db_err:
             print(f"Warning: Failed to update OfferDetails in database: {db_err}")
+            try:
+                session.rollback()
+            except Exception:
+                pass
 
         # If offer is rejected, return JSON response immediately
         if not approve:
@@ -578,12 +679,16 @@ def process_offer_action(
                 }
             )
 
+        eff_cand_id = candidate_id or final_applicant_id
+        eff_offer_id = offer_id or final_applicant_id
+
         # Get candidate name from DB
         candidate_name = "Candidate"
         try:
-            app_id_int = int(final_applicant_id)
+            raw_cid = str(eff_cand_id).replace("CID-", "").split("-")[-1]
+            lookup_id = int(raw_cid) if raw_cid.isdigit() else int(final_applicant_id)
             job_app = session.exec(
-                select(models.JobApplications).where(models.JobApplications.id == app_id_int)
+                select(models.JobApplications).where(models.JobApplications.id == lookup_id)
             ).first()
             if job_app:
                 names = [n for n in [job_app.first_name, job_app.last_name] if n]
@@ -592,30 +697,56 @@ def process_offer_action(
         except Exception as e:
             print(f"Could not fetch candidate name: {e}")
 
-        # Get existing PDF from MinIO
+        cand_filename = build_offer_letter_filename(
+            candidate_id=eff_cand_id,
+            offer_id=eff_offer_id,
+            candidate_name=candidate_name,
+            base_pdf_name=f"{candidate_name.replace(' ', '_')}_Offer_Letter.pdf"
+        )
+        object_name = f"offer-letters/{cand_filename}"
+
+        # Get existing PDF from MinIO (direct file in offer-letters/)
         minio_client = minio_helper.get_minio_client()
-        object_name = f"offer-letters/{final_applicant_id}/Naidu_Kunapareddy_Offer_Letter.pdf"
-        
+        original_pdf_bytes = None
         try:
             response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, object_name)
             original_pdf_bytes = response.read()
             response.close()
             response.release_conn()
-        except Exception as e:
-            # Fallback search for any PDF in that folder
-            objects = minio_client.list_objects(consts.INFOSPOKE_S3_BUCKET_NAME, prefix=f"offer-letters/{final_applicant_id}/")
-            found = False
-            for obj in objects:
-                if obj.object_name.endswith('.pdf'):
-                    object_name = obj.object_name
-                    response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, object_name)
-                    original_pdf_bytes = response.read()
-                    response.close()
-                    response.release_conn()
-                    found = True
-                    break
-            if not found:
-                raise HTTPException(status_code=404, detail=f"Offer letter PDF not found for applicant {final_applicant_id}")
+        except Exception:
+            # Fallback 1: Search direct PDF files in offer-letters/
+            try:
+                objects = minio_client.list_objects(consts.INFOSPOKE_S3_BUCKET_NAME, prefix="offer-letters/")
+                for obj in objects:
+                    oname = obj.object_name
+                    if oname.endswith('.pdf') and ("/" not in oname[14:]):
+                        if candidate_name.replace(' ', '_').lower() in oname.lower() or str(final_applicant_id) in oname:
+                            response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, oname)
+                            original_pdf_bytes = response.read()
+                            response.close()
+                            response.release_conn()
+                            object_name = oname
+                            break
+            except Exception:
+                pass
+
+        # Fallback 3: Pick any existing PDF in offer-letters/
+        if not original_pdf_bytes:
+            try:
+                objects = minio_client.list_objects(consts.INFOSPOKE_S3_BUCKET_NAME, prefix="offer-letters/", recursive=True)
+                for obj in objects:
+                    if obj.object_name.endswith('.pdf'):
+                        response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, obj.object_name)
+                        original_pdf_bytes = response.read()
+                        response.close()
+                        response.release_conn()
+                        object_name = obj.object_name
+                        break
+            except Exception:
+                pass
+
+        if not original_pdf_bytes:
+            raise HTTPException(status_code=404, detail=f"Offer letter PDF not found for applicant {final_applicant_id}")
 
         # Extract signature base64 if a file was uploaded
         import base64
@@ -648,17 +779,15 @@ def process_offer_action(
             signed_pdf_bytes = original_pdf_bytes
         
         filename = object_name.split("/")[-1]
-        pdf_b64 = base64.b64encode(signed_pdf_bytes).decode('utf-8')
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "Successfully approved offer",
-                "message": "Successfully approved offer",
-                "offer_status": "Approved",
-                "filename": filename,
-                "pdf": pdf_b64,
-                "pdf_base64": pdf_b64
-            }
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        }
+
+        return StreamingResponse(
+            io.BytesIO(signed_pdf_bytes),
+            media_type="application/pdf",
+            headers=headers,
         )
     except HTTPException:
         raise
