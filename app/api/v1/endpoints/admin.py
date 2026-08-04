@@ -482,17 +482,13 @@ def approved_offer(
             )
 
         filename = object_name.split("/")[-1]
-        headers = {
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Access-Control-Expose-Headers": "Content-Disposition, X-Offer-Status, X-Status, status",
-            "X-Offer-Status": "Approved",
-            "X-Status": "success",
-            "status": "success",
-        }
-        return StreamingResponse(
-            io.BytesIO(pdf_bytes),
-            media_type="application/pdf",
-            headers=headers,
+        pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "Successfully approved offer",
+                "pdf": pdf_b64,
+            }
         )
     except HTTPException:
         raise
@@ -652,17 +648,17 @@ def process_offer_action(
             signed_pdf_bytes = original_pdf_bytes
         
         filename = object_name.split("/")[-1]
-        headers = {
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Access-Control-Expose-Headers": "Content-Disposition, X-Offer-Status, X-Status, status",
-            "X-Offer-Status": "Approved",
-            "X-Status": "success",
-            "status": "success",
-        }
-        return StreamingResponse(
-            io.BytesIO(signed_pdf_bytes),
-            media_type="application/pdf",
-            headers=headers,
+        pdf_b64 = base64.b64encode(signed_pdf_bytes).decode('utf-8')
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "Successfully approved offer",
+                "message": "Successfully approved offer",
+                "offer_status": "Approved",
+                "filename": filename,
+                "pdf": pdf_b64,
+                "pdf_base64": pdf_b64
+            }
         )
     except HTTPException:
         raise
