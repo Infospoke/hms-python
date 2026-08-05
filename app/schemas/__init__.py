@@ -375,3 +375,12 @@ class OfferLetterRequest(BaseModel):
     equity_rsu: float
     other_benefits: float
     notice_period: str
+
+class RegenerateOfferLetterRequest(BaseModel):
+    application_id: int
+    candidate_id: int
+    offer_id: int
+    probation_period: str
+    total_ctc: float
+    approve: bool
+    comments: str
