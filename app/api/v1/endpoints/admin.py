@@ -33,7 +33,7 @@ from datetime import datetime
 from app.db.session import get_session
 from app import models
 from app.api import deps
-from app.schemas import OfferLetterRequest
+from app.schemas import OfferLetterRequest, RegenerateOfferLetterRequest
 from app.services.offer_service import get_offer_details
 from app.services.reports.offer_letter_report import generate_offer_letter_pdf
 
@@ -365,7 +365,7 @@ def generate_offer_letter(
 ):
     try:
         # Fetch the JSON data
-        data = get_offer_details(db, request)
+        data = get_offer_details(db, request, force_budget_ctc=True)
 
         # Generate the PDF
         pdf_buffer = generate_offer_letter_pdf(data)
@@ -402,6 +402,145 @@ def generate_offer_letter(
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/regenerate-offer-letter")
+def regenerate_offer_letter(
+    request: RegenerateOfferLetterRequest,
+    db: Session = Depends(deps.get_session)
+):
+    try:
+        import io
+        from app.services import minio_helper
+        from app.services.reports.offer_letter_report import generate_offer_letter_pdf
+        from datetime import datetime
+
+        # 1. Update OfferDetails in database with new total_ctc and probation_period
+        try:
+            offer_detail = db.exec(
+                select(models.OfferDetails).where(
+                    (models.OfferDetails.id == request.offer_id) |
+                    (models.OfferDetails.job_application_id == request.application_id)
+                )
+            ).first()
+
+            status_str = "Regenerated" if request.approve else "Rejected"
+            if offer_detail:
+                offer_detail.offer_status = status_str
+                offer_detail.approve = request.approve
+                offer_detail.reject = not request.approve
+                offer_detail.probation_period = request.probation_period
+                offer_detail.responded_at = datetime.now()
+                offer_detail.total_ctc = int(request.total_ctc)
+                db.add(offer_detail)
+            else:
+                new_offer_detail = models.OfferDetails(
+                    id=request.offer_id,
+                    job_application_id=request.application_id,
+                    offer_status=status_str,
+                    approve=request.approve,
+                    reject=not request.approve,
+                    probation_period=request.probation_period,
+                    total_ctc=int(request.total_ctc),
+                    responded_at=datetime.now()
+                )
+                db.add(new_offer_detail)
+
+            # Also update BudgetCompensation.annual_hiring_cost
+            candidate = db.exec(
+                select(models.JobApplications).where(models.JobApplications.id == request.application_id)
+            ).first()
+            if candidate and candidate.job_id:
+                from app.models import CreateJobDetails, BudgetCompensation
+                job = db.exec(select(CreateJobDetails).where(CreateJobDetails.job_id == candidate.job_id)).first()
+                if job and job.sr_id:
+                    budget = db.exec(select(BudgetCompensation).where(BudgetCompensation.sr_id == job.sr_id)).first()
+                    if budget:
+                        budget.annual_hiring_cost = int(request.total_ctc)
+                        db.add(budget)
+
+            db.commit()
+        except Exception as db_err:
+            print(f"Warning: Failed to update OfferDetails in database during regenerate: {db_err}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+        # If rejected, return JSON response
+        if not request.approve:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "Rejected",
+                    "offer_status": "Rejected",
+                    "message": "Regenerate offer rejected"
+                }
+            )
+
+        # 2. Get Job Application & Candidate Details
+        candidate = db.exec(
+            select(models.JobApplications).where(models.JobApplications.id == request.application_id)
+        ).first()
+
+        candidate_name = "Candidate"
+        if candidate:
+            names = [n for n in [candidate.first_name, candidate.last_name] if n]
+            if names:
+                candidate_name = " ".join(names)
+
+        # Calculate CTC salary components based on total_ctc
+        ctc_val = float(request.total_ctc or 0.0)
+        basic_salary = ctc_val * 0.5 if ctc_val > 0 else 0.0
+
+        from app.services.offer_service import generate_reference_id
+        offer_data = {
+            "reference_id": generate_reference_id(request.application_id),
+            "date": datetime.now().strftime("%d-%m-%Y"),
+            "candidate_name": candidate_name,
+            "job_title": getattr(candidate, "current_stage", "Employee") if candidate else "Employee",
+            "reporting_manager": "Manager",
+            "ctc": ctc_val,
+            "basic_salary": basic_salary,
+            "signing_bonus": 0.0,
+            "equity_rsu": 0.0,
+            "other_benefits": ctc_val - basic_salary if ctc_val > basic_salary else 0.0,
+            "notice_period": "30 Days",
+            "probation_period": request.probation_period
+        }
+
+        # 3. Generate updated PDF
+        pdf_buffer = generate_offer_letter_pdf(offer_data)
+        pdf_bytes = pdf_buffer.getvalue()
+
+        # 4. Construct MinIO filename
+        filename = build_offer_letter_filename(
+            candidate_id=request.candidate_id,
+            offer_id=request.offer_id,
+            candidate_name=candidate_name,
+            base_pdf_name=f"{candidate_name.replace(' ', '_')}_Offer_Letter.pdf"
+        )
+        object_name = f"offer-letters/{filename}"
+
+        # 5. Overwrite / Upload regenerated PDF to MinIO
+        upload_result = minio_helper.upload_pdf(pdf_bytes, object_name)
+        if not upload_result.get("success"):
+            print(f"Warning: Failed to upload regenerated offer letter to MinIO: {upload_result.get('error')}")
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        }
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers=headers,
+        )
+    except Exception as e:
+        logger.error(f"Failed to regenerate offer letter: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate offer letter: {e}")
 
 from pydantic import BaseModel
 from typing import Optional
@@ -497,9 +636,10 @@ def approved_offer(
         )
         object_name = f"offer-letters/{cand_filename}"
 
-        # Get existing offer letter PDF from MinIO (direct file in offer-letters/)
         minio_client = minio_helper.get_minio_client()
         pdf_bytes = None
+
+        # Get existing offer letter PDF from MinIO (direct file in offer-letters/)
         try:
             response = minio_client.get_object(consts.INFOSPOKE_S3_BUCKET_NAME, object_name)
             pdf_bytes = response.read()
