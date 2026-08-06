@@ -369,7 +369,7 @@ class CalculateEvaluationSummaryRequest(BaseModel):
 class OfferLetterRequest(BaseModel):
     application_id: int
     job_id: int
-    candidate_id: int
+    candidate_id: str
     offer_id: int
     basic_salary: float
     signing_bonus: float
@@ -381,7 +381,6 @@ class RegenerateOfferLetterRequest(BaseModel):
     application_id: int
     candidate_id: int
     offer_id: int
-    probation_period: str
     total_ctc: float
     approve: bool
     comments: str

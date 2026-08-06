@@ -414,7 +414,8 @@ def regenerate_offer_letter(
         from app.services.reports.offer_letter_report import generate_offer_letter_pdf
         from datetime import datetime
 
-        # 1. Update OfferDetails in database with new total_ctc and probation_period
+        # 1. Update OfferDetails in database with new total_ctc
+        probation_period = None
         try:
             offer_detail = db.exec(
                 select(models.OfferDetails).where(
@@ -423,12 +424,14 @@ def regenerate_offer_letter(
                 )
             ).first()
 
+            if offer_detail:
+                probation_period = offer_detail.probation_period
+
             status_str = "Regenerated" if request.approve else "Rejected"
             if offer_detail:
                 offer_detail.offer_status = status_str
                 offer_detail.approve = request.approve
                 offer_detail.reject = not request.approve
-                offer_detail.probation_period = request.probation_period
                 offer_detail.responded_at = datetime.now()
                 offer_detail.total_ctc = int(request.total_ctc)
                 db.add(offer_detail)
@@ -439,7 +442,7 @@ def regenerate_offer_letter(
                     offer_status=status_str,
                     approve=request.approve,
                     reject=not request.approve,
-                    probation_period=request.probation_period,
+                    probation_period=None,
                     total_ctc=int(request.total_ctc),
                     responded_at=datetime.now()
                 )
@@ -505,7 +508,7 @@ def regenerate_offer_letter(
             "equity_rsu": 0.0,
             "other_benefits": ctc_val - basic_salary if ctc_val > basic_salary else 0.0,
             "notice_period": "30 Days",
-            "probation_period": request.probation_period
+            "probation_period": probation_period
         }
 
         # 3. Generate updated PDF
