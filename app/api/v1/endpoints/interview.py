@@ -1969,23 +1969,8 @@ def fetch_interview_feedback(
         # Convert feedback to dictionary so we can add the score dynamically
         feedback_data = feedback.dict()
 
-        # Query EvaluationSummary to fetch round scores
-        evaluation_summary = session.exec(
-            select(models.EvaluationSummary).where(
-                models.EvaluationSummary.application_id == application_id
-            )
-        ).first()
-
-        score = None
-        if evaluation_summary:
-            if current_stage_id == 2:
-                score = evaluation_summary.technical_score
-            elif current_stage_id == 3:
-                score = evaluation_summary.managerial_score
-            elif current_stage_id == 4:
-                score = evaluation_summary.hr_score
-
-        feedback_data["overall_score"] = score
+        # Map overall_score directly to the overall_rating column from tb_interview_feedback
+        feedback_data["overall_score"] = feedback.overall_rating
 
         return {"success": True, "data": feedback_data}
     except HTTPException:
