@@ -1967,41 +1967,8 @@ def fetch_interview_feedback(
         # Convert feedback to dictionary so we can add the score dynamically
         feedback_data = feedback.dict()
 
-        # Get the primary key id from User table based on feedback.user_id and override it in the response
-        if feedback.user_id:
-            user = session.exec(
-                select(models.User).where(models.User.user_id == feedback.user_id)
-            ).first()
-            if user:
-                feedback_data["user_id"] = user.id
-
-        # Get interview_completed_on from tb_interview_current_stage
-        current_stage_info = session.exec(
-            select(models.InterviewCurrentStage).where(
-                models.InterviewCurrentStage.application_id == application_id,
-                models.InterviewCurrentStage.current_stage_type == current_stage_id
-            )
-        ).first()
-
-        feedback_data["interview_completed_on"] = current_stage_info.interview_completed_on if current_stage_info else None
-
-        # Query EvaluationSummary to fetch round scores
-        evaluation_summary = session.exec(
-            select(models.EvaluationSummary).where(
-                models.EvaluationSummary.application_id == application_id
-            )
-        ).first()
-
-        score = None
-        if evaluation_summary:
-            if current_stage_id == 2:
-                score = evaluation_summary.technical_score
-            elif current_stage_id == 3:
-                score = evaluation_summary.managerial_score
-            elif current_stage_id == 4:
-                score = evaluation_summary.hr_score
-
-        feedback_data["overall_score"] = score
+        # Map overall_score directly to the overall_rating column from tb_interview_feedback
+        feedback_data["overall_score"] = feedback.overall_rating
 
         return {"success": True, "data": feedback_data}
     except HTTPException:
