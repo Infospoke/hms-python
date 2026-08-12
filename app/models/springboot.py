@@ -125,39 +125,6 @@ class Skills(SQLModel, table=True):
     # is_deleted: bool = Field(default=False)
 
 
-class SkillCategories(SQLModel, table=True):
-    __tablename__ = "tb_skill_categories"
-    category_id: Optional[int] = Field(default=None, primary_key=True)
-    category_name: str = Field(max_length=50, nullable=False)
-
-
-class JobSkillWeightage(SQLModel, table=True):
-    __tablename__ = "tb_job_skill_weightage"
-    job_skill_id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
-    skill_id: int = Field(foreign_key="tb_skills.skill_id")
-    category_id: int = Field(foreign_key="tb_skill_categories.category_id")
-    experience_level: int
-    weightage: int
-    # is_deleted: bool = Field(default=False)
-
-
-class Questions(SQLModel, table=True):
-    __tablename__ = "tb_questions"
-    question_id: Optional[int] = Field(default=None, primary_key=True)
-    skill_id: int = Field(foreign_key="tb_skills.skill_id")
-    question_text: str = Field(sa_column=Column(Text, nullable=False))
-    experience_level: int
-    question_weightage: int
-
-
-class InterviewQuestions(SQLModel, table=True):
-    __tablename__ = "tb_interview_questions"
-    interview_question_id: Optional[int] = Field(default=None, primary_key=True)
-    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
-    question_id: int = Field(foreign_key="tb_questions.question_id")
-    assigned_weightage: int
-
 
 class ActivityFeed(SQLModel, table=True):
     __tablename__ = "tb_activity_feed"
@@ -167,158 +134,27 @@ class ActivityFeed(SQLModel, table=True):
     # is_deleted: bool = Field(default=False)
 
 
-class AssetsInfo(SQLModel, table=True):
-    __tablename__ = "tb_assets_info"
 
-    asset_id: Optional[int] = Field(default=None, primary_key=True)
-    asset_type: Optional[str] = Field(default=None, max_length=100)
-    model: Optional[str] = Field(default=None, max_length=100)
-    description: Optional[str] = Field(default=None, sa_column=Column(Text))
-    updated_by: Optional[str] = Field(default=None, max_length=100)
-    created_by: Optional[str] = Field(default=None, max_length=100)
-    created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
+
+# class Offer(SQLModel, table=True):
+#     __tablename__ = "tb_offer"
+
+#     id: Optional[int] = Field(default=None, primary_key=True)
+#     # Foreign Key → candidate_info.id
+#     candidate_id: Optional[int] = Field(
+#         default=None, foreign_key="tb_candidate_info.id"
+#     )
+#     offer_letter_path: Optional[str] = Field(default=None, max_length=255)
+#     ctc: Optional[int]
+#     issue_date: Optional[datetime]
+#     accepted_date: Optional[datetime]
+#     status: Optional[str] = Field(default=None, max_length=50)
+#     created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
+#     updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
     # is_deleted: bool = Field(default=False)
 
 
-class AssetType(SQLModel, table=True):
-    __tablename__ = "tb_asset_type"
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-    asset_type: Optional[str] = Field(default=None, max_length=100)
-    created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    # is_deleted: bool = Field(default=False)
-
-
-class EmployeeAssetsInfo(SQLModel, table=True):
-    __tablename__ = "tb_employee_assets_info"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    employee_id: Optional[str] = Field(default=None, max_length=255)
-    employee_name: Optional[str] = Field(default=None, max_length=255)
-    assigned_by: Optional[str] = Field(default=None, max_length=255)
-    # created_date: Optional[datetime] = Field(default=None)
-    is_deleted: bool = Field(default=False)
-
-
-class CandidateInfo(SQLModel, table=True):
-    __tablename__ = "tb_candidate_info"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    first_name: Optional[str] = Field(default=None, max_length=100)
-    last_name: Optional[str] = Field(default=None, max_length=100)
-    phone_number: Optional[str] = Field(default=None, max_length=20)
-    email: Optional[str] = Field(default=None, max_length=150)
-    job_country: Optional[str] = Field(default=None, max_length=100)
-    job_title: Optional[str] = Field(default=None, max_length=100)
-    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
-    department: Optional[str] = Field(default=None, max_length=100)
-    status: Optional[str] = Field(default=None, max_length=50)
-    description: Optional[str] = Field(default=None, sa_column=Column(Text))
-    github_url: Optional[str] = Field(default=None, max_length=255)
-    linkedin_url: Optional[str] = Field(default=None, max_length=255)
-    application_id: Optional[int] = Field(
-        default=None, foreign_key="tb_job_applications.id"
-    )
-    accepted_date: Optional[datetime]
-    created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    comment: Optional[str] = Field(default=None, sa_column=Column(Text))
-    # is_deleted: bool = Field(default=False)
-
-
-class Offer(SQLModel, table=True):
-    __tablename__ = "tb_offer"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    # Foreign Key → candidate_info.id
-    candidate_id: Optional[int] = Field(
-        default=None, foreign_key="tb_candidate_info.id"
-    )
-    offer_letter_path: Optional[str] = Field(default=None, max_length=255)
-    ctc: Optional[int]
-    issue_date: Optional[datetime]
-    accepted_date: Optional[datetime]
-    status: Optional[str] = Field(default=None, max_length=50)
-    created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    # is_deleted: bool = Field(default=False)
-
-
-class PreOnBoarding(SQLModel, table=True):
-    __tablename__ = "tb_pre_onboarding"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    first_name: Optional[str] = Field(default=None, max_length=100)
-    last_name: Optional[str] = Field(default=None, max_length=100)
-    middle_name: Optional[str] = Field(default=None, max_length=100)
-    gender: Optional[str] = Field(default=None, max_length=20)
-    personal_info: Optional[str] = Field(default=None, sa_column=Column(Text))
-    address_info: Optional[str] = Field(default=None, sa_column=Column(Text))
-    bank_info: Optional[str] = Field(default=None, sa_column=Column(Text))
-    date_of_birth: Optional[str] = Field(default=None, max_length=50)
-    nationality: Optional[str] = Field(default=None, max_length=50)
-    aadhar_number: Optional[str] = Field(default=None, max_length=20)
-    city: Optional[str] = Field(default=None, max_length=100)
-    address1: Optional[str] = Field(default=None, max_length=255)
-    state: Optional[str] = Field(default=None, max_length=100)
-    pincode: Optional[str] = Field(default=None, max_length=20)
-    country: Optional[str] = Field(default=None, max_length=100)
-    bank_account_number: Optional[str] = Field(default=None, max_length=50)
-    ifsc_code: Optional[str] = Field(default=None, max_length=20)
-    highest_education_qualification: Optional[str] = Field(default=None, max_length=150)
-    cgpa: Optional[str] = Field(default=None, max_length=20)
-    year: Optional[int]
-    is_fresher: Optional[bool]
-    education_document: Optional[str] = Field(default=None, max_length=255)
-    bank_photo: Optional[str] = Field(default=None, max_length=255)
-    aadhar_photo: Optional[str] = Field(default=None, max_length=255)
-    pay_slips: Optional[str] = Field(default=None, max_length=255)
-    experience: Optional[str] = Field(default=None, sa_column=Column(Text))
-    remarks: Optional[str] = Field(default=None, sa_column=Column(Text))
-    phone_number: Optional[str] = Field(default=None, max_length=20)
-    email: Optional[str] = Field(default=None, max_length=150)
-    organization_details: Optional[str] = Field(default=None, sa_column=Column(Text))
-    # Foreign Key → candidate_info.id
-    candidate_id: Optional[int] = Field(
-        default=None, foreign_key="tb_candidate_info.id"
-    )
-    created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    # is_deleted: bool = Field(default=False)
-
-
-class BGV(SQLModel, table=True):
-    __tablename__ = "tb_bgv"
-    id: Optional[int] = Field(default=None, primary_key=True)
-    vendor_status: Optional[str] = Field(default=None, max_length=50)
-    final_status: Optional[str] = Field(default=None, max_length=50)
-    report_url: Optional[str] = Field(default=None, max_length=255)
-    # Foreign Key → candidate_info.id
-    candidate_id: Optional[int] = Field(
-        default=None, foreign_key="tb_candidate_info.id"
-    )
-    created_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    updated_date: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    # is_deleted: bool = Field(default=False)
-
-# --- NEW TABLES ---
-
-from enum import Enum
-
-
-class AssignRoles(SQLModel, table=True):
-    __tablename__ = "tb_assign_roles"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    assign_role_id: int
-    role_id: int
-    user_id: int
-
-    assigned_at: Optional[date] = None
-    assigned_by: Optional[str] = Field(default=None, max_length=255)
 
 
 class BudgetCompensation(SQLModel, table=True):
@@ -359,12 +195,12 @@ class BusinessUnit(SQLModel, table=True):
     business_name: Optional[str] = Field(default=None, max_length=255)
 
 
-class ChildReportingManagerInfo(SQLModel, table=True):
-    __tablename__ = "tb_child_reporting_manager_info"
+# class ChildReportingManagerInfo(SQLModel, table=True):
+#     __tablename__ = "tb_child_reporting_manager_info"
 
-    staffing_requisition_id: int = Field(primary_key=True)
+#     staffing_requisition_id: int = Field(primary_key=True)
 
-    reporting_manager_ids: Optional[int] = None
+#     reporting_manager_ids: Optional[int] = None
 
 
 class Departments(SQLModel, table=True):
@@ -379,70 +215,7 @@ class Departments(SQLModel, table=True):
     dept_code: Optional[str] = Field(default=None, max_length=255)
 
 
-class EmploymentType(SQLModel, table=True):
-    __tablename__ = "tb_employement_type"
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    employment_id: Optional[int] = None
-    employement_type: Optional[str] = Field(default=None, max_length=255)
-
-
-class Module(SQLModel, table=True):
-    __tablename__ = "tb_module"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    created_by: Optional[str] = Field(default=None, max_length=255)
-    created_date: Optional[date] = None
-
-    module_id: int
-    module_name: Optional[str] = Field(default=None, max_length=255)
-
-    parent_id: int
-
-    updated_by: Optional[str] = Field(default=None, max_length=255)
-    updated_date: Optional[date] = None
-
-
-class CredentialType(str, Enum):
-    PASSWORD = "PASSWORD"
-    PIN = "PIN"
-
-
-class PasswordHistory(SQLModel, table=True):
-    __tablename__ = "tb_password_history"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    created_at: Optional[datetime] = None
-
-    credential: str = Field(max_length=255)
-    credential_type: CredentialType
-
-    user_id: int
-
-
-class Permission(SQLModel, table=True):
-    __tablename__ = "tb_permission"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    can_create: Optional[bool] = None
-    can_delete: Optional[bool] = None
-    can_edit: Optional[bool] = None
-    can_view: Optional[bool] = None
-    can_export: Optional[bool] = None
-
-    created_by: Optional[str] = Field(default=None, max_length=255)
-    created_date: Optional[date] = None
-
-    updated_by: Optional[str] = Field(default=None, max_length=255)
-    updated_date: Optional[date] = None
-
-    module_id: int
-    permission_id: int
-    role_id: int
 
 
 class Role(SQLModel, table=True):
@@ -546,23 +319,6 @@ class SrPositionBasics(SQLModel, table=True):
 
     work_mode: Optional[str] = Field(default=None, max_length=255)
 
-class TravelRequirement(SQLModel, table=True):
-    __tablename__ = "tb_travel_requirement"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    travel_requirement: Optional[str] = Field(default=None, max_length=255)
-
-
-class UserType(SQLModel, table=True):
-    __tablename__ = "tb_user_type"
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    user_type: Optional[str] = Field(default=None, max_length=255)
-    user_type_id: Optional[int] = None
-
-
 class InterviewPlan(SQLModel, table=True):
     __tablename__ = "tb_interview_plan"
 
@@ -612,6 +368,7 @@ class InterviewCurrentStage(SQLModel, table=True):
     interview_date: Optional[datetime] = Field(default=None)
     feedback: Optional[bool] = Field(default=None)
     round_order: Optional[int] = Field(default=None)
+    feedback_status: Optional[str] = Field(default="pending", max_length=255)
 
 
 class InterviewAssignment(SQLModel, table=True):
@@ -713,4 +470,4 @@ class OfferDetails(SQLModel, table=True):
     total_ctc: Optional[int] = Field(default=None)
     compensation: Optional[str] = Field(default=None, sa_column=Column(Text))
     offer_letter_template_id: Optional[int] = Field(default=None)
-    offer_status: Optional[str] = Field(default=None, max_length=255)
+    offer_status: Optional[str] = Field(default=None, max_length=255)
