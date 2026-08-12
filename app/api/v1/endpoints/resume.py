@@ -653,11 +653,13 @@ def analyze_resumes_batch(
     session: Session = Depends(deps.get_session),
 ):
     try:
-        if not data.resume_batch:
+        # Filter out None/null values from resume_batch
+        valid_resume_batch = [r for r in data.resume_batch if r is not None]
+        if not valid_resume_batch:
             return {"message": consts.NO_APPLICATIONS_PROVIDED, "results": []}
         applications_to_check = session.exec(
             select(models.JobApplications).where(
-                models.JobApplications.id.in_(data.resume_batch)
+                models.JobApplications.id.in_(valid_resume_batch)
             )
         ).all()
         already_analyzed = []

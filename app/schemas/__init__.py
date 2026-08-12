@@ -8,7 +8,7 @@ from enum import Enum
 
 class ResumeBatch(BaseModel):
     batch_id: int
-    resume_batch: List[int]
+    resume_batch: List[Optional[int]]
 
 
 class AnalyseResumesByJobIdRequest(BaseModel):
