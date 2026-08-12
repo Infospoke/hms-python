@@ -2,7 +2,7 @@ import logging
 from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy.exc import OperationalError, DatabaseError
 from sqlalchemy import text
-from app.core.exceptions import DatabaseConnectionException, DatabaseException
+from app.core.exceptions import DatabaseConnectionException, DatabaseException, ATSException
 from app.core import config as consts
 
 # --- DATABASE ENGINE ---
@@ -71,7 +71,13 @@ def get_session():
                 logger.error(f"Error during rollback: {str(rollback_error)}")
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in database session: {str(e)}")
+        exc_type_name = type(e).__name__
+        is_expected_error = (
+            exc_type_name in ("HTTPException", "RequestValidationError", "ValidationError")
+            or isinstance(e, ATSException)
+        )
+        if not is_expected_error:
+            logger.error(f"Unexpected error in database session: {str(e)}")
         if session:
             try:
                 session.rollback()
