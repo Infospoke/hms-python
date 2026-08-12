@@ -487,7 +487,7 @@ def update_final_candidate_decision(
             select(models.CreateJobDetails).where(models.CreateJobDetails.job_id == job_application.job_id)
         ).first()
 
-        # comment = data.comment or ""
+        comment = data.comment or ""
         resolved_status = "Joined" if data.decision == "HIRED" else "Rejected"
 
         candidate_info = models.CandidateInfo(
@@ -808,48 +808,6 @@ def save_proctoring_violation(interview_session_id: str, alert_type: str, image)
         raise e
 
 
-def get_custom_questions(session: Session, job_id: int) -> List[Dict[str, Any]]:
-    import random
-
-    custom_question_limit = consts.MAX_QUESTIONS
-
-    interview_questions = session.exec(
-        select(models.InterviewQuestions, models.Questions)
-        .join(
-            models.Questions,
-            models.InterviewQuestions.question_id == models.Questions.question_id,
-        )
-        .where(models.InterviewQuestions.job_id == job_id)
-        .order_by(models.InterviewQuestions.assigned_weightage.desc())
-    ).all()
-
-    if not interview_questions:
-        logger.warning(f"No custom interview questions found for job_id {job_id}")
-        return []
-
-    question_pool = [
-        {
-            "question_id": question.question_id,
-            "question_text": question.question_text,
-        }
-        for _, question in interview_questions
-    ]
-
-    if len(question_pool) <= custom_question_limit:
-        selected_questions = question_pool
-    else:
-        selected_questions = random.sample(question_pool, custom_question_limit)
-
-    return [
-        {
-            "id": idx + 1,
-            "question": question["question_text"],
-            "question_id": question["question_id"],
-        }
-        for idx, question in enumerate(selected_questions)
-    ]
-
-
 def start_interview_generation(interview_session_id: str, session: Session):
     interview_session = session.exec(
         select(models.InterviewSessions).where(
@@ -979,143 +937,6 @@ def start_interview_generation(interview_session_id: str, session: Session):
     elif interview_analysis and interview_analysis.questions:
         logger.info(f"Using pre-existing questions from tb_interview_analysis for application {interview_session.application_id}")
         structured_questions = interview_analysis.questions
-
-    # 2. If no questions exist, generate them
-    if not structured_questions:
-        if question_type == "CUSTOM":
-            logger.info(f"Fetching custom questions for job {job_details.job_id}")
-            structured_questions = get_custom_questions(session, job_details.job_id)
-
-            if len(structured_questions) < 5:
-                logger.warning(
-                    f"No custom questions found for job {job_details.job_id}. Falling back to AI."
-                )
-                question_type = "AI"
-
-        if question_type == "AI":
-            resume_analysis = session.exec(
-                select(models.ResumeAnalysis).where(
-                    models.ResumeAnalysis.application_id == interview_session.application_id
-                )
-            ).first()
-
-            resume_parser = S3ResumeParser()
-            resume_text_response = resume_parser.extract_text(resume_analysis.file_path)
-            if isinstance(resume_text_response, dict):
-                resume_text = resume_text_response.get("text", "") or "No resume text available."
-            else:
-                resume_text = resume_text_response or "No resume text available."
-
-            # Combine work details as job info
-            info_parts = []
-            if job_details.location:
-                info_parts.append(job_details.location)
-            if job_details.country:
-                info_parts.append(job_details.country)
-            if job_details.work_mode:
-                info_parts.append(job_details.work_mode)
-            if job_details.employment_type:
-                info_parts.append(job_details.employment_type)
-            job_info = ", ".join(info_parts) if info_parts else None
-
-            # Fetch job description
-            job_desc_record = session.exec(
-                select(models.JobDescription).where(
-                    models.JobDescription.job_id == job_details.job_id
-                )
-            ).first()
-            job_description_str = ""
-            if job_desc_record and job_desc_record.description:
-                if isinstance(job_desc_record.description, list):
-                    desc_parts = []
-                    for item in job_desc_record.description:
-                        if isinstance(item, dict):
-                            title = item.get("title") or item.get("section_title") or item.get("heading")
-                            content = item.get("content") or item.get("text") or item.get("value")
-                            if title and content:
-                                desc_parts.append(f"{title}: {content}")
-                            elif content:
-                                desc_parts.append(content)
-                            else:
-                                desc_parts.append(", ".join(f"{k}: {v}" for k, v in item.items() if v))
-                        elif isinstance(item, str):
-                            desc_parts.append(item)
-                    job_description_str = "\n".join(desc_parts)
-                elif isinstance(job_desc_record.description, str):
-                    job_description_str = job_desc_record.description
-
-            # Combine requirements
-            req_parts = []
-            if job_details.min_experience is not None or job_details.max_experience is not None:
-                exp_str = ""
-                if job_details.min_experience is not None and job_details.max_experience is not None:
-                    exp_str = f"{job_details.min_experience} to {job_details.max_experience} years experience"
-                elif job_details.min_experience is not None:
-                    exp_str = f"Minimum {job_details.min_experience} years experience"
-                else:
-                    exp_str = f"Maximum {job_details.max_experience} years experience"
-                req_parts.append(exp_str)
-            if job_details.certifications_required:
-                req_parts.append(f"Certifications: {job_details.certifications_required}")
-            if job_details.languages:
-                req_parts.append(f"Languages: {job_details.languages}")
-            if job_details.additional_notes:
-                req_parts.append(f"Notes: {job_details.additional_notes}")
-            job_requirements = "\n".join(req_parts) if req_parts else None
-
-            # Extract qualification
-            qualification = job_details.education_requirements
-
-            # Extract skills
-            skills = job_details.skills_must_have
-            if job_details.nice_to_have_skills:
-                skills = f"{skills or ''}\nNice to have: {job_details.nice_to_have_skills}"
-
-            job_description = utils.construct_job_description_for_llm(
-                job_title=db_operations.get_job_title(session, job_details.job_id),
-                job_info=job_info,
-                job_description=job_description_str,
-                job_requirements=job_requirements,
-                qualification=qualification,
-                skills=skills,
-            )
-
-            technial_interviewer = AIInterviewer(
-                job_role=db_operations.get_job_title(session, job_details.job_id),
-                job_description=job_description,
-                experience=resume_analysis.experience_level,
-                skills=skills,
-                topics=resume_analysis.tb_interview_focus_areas,
-                resume_text=resume_text,
-            )
-
-            questions = technial_interviewer.generate_questions()
-
-            structured_questions = []
-            technical_count = len(questions) // 2 if len(questions) % 2 == 0 else (len(questions) // 2 + 1)
-            for idx, question in enumerate(questions):
-                q_type = "technical" if idx < technical_count else "behavioural"
-                structured_questions.append({
-                    "question_id": idx + 1,
-                    "question": question,
-                    "expected_time": "2-3 mins",
-                    "difficulty_level": "medium",
-                    "question_type": q_type
-                })
-
-            # Save generated questions to tb_ai_interview_questions for persistence
-            if not ai_questions:
-                ai_questions = models.AIInterviewQuestions(
-                    application_id=interview_session.application_id,
-                    number_of_questions=len(structured_questions),
-                    difficulty_level="Medium",
-                    question_type=["technical"],
-                    questions=structured_questions
-                )
-            else:
-                ai_questions.questions = structured_questions
-                ai_questions.number_of_questions = len(structured_questions)
-            session.add(ai_questions)
 
     interview_analysis.questions = structured_questions
     interview_analysis.status = models.StatusEnum.in_progress
