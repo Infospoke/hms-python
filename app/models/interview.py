@@ -89,9 +89,7 @@ class QNA_Analysis(SQLModel, table=(True)):
         default=None, foreign_key="tb_job_applications.id"
     )
     interview_analysis_id: int = Field(foreign_key="tb_interview_analysis.id")
-    question_id: Optional[int] = Field(
-        default=None, foreign_key="tb_questions.question_id"
-    )
+    question_id: Optional[int] = Field(default=None)
     question_text: str = Field(sa_column=Column(Text))
     answer_text: str = Field(sa_column=Column(Text))
     ai_analysis: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))

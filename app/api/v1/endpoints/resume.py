@@ -441,13 +441,8 @@ def add_interview_details(results_db, session):
         # -------------------------------
         # Candidate decision
         # -------------------------------
-        candidate_info = session.exec(
-            select(models.CandidateInfo).where(
-                models.CandidateInfo.application_id == application_id,
-            )
-        ).first()
-        result["candidate_status"] = candidate_info.status if candidate_info else None
-        result["candidate_comment"] = candidate_info.comment if candidate_info else None
+        result["candidate_status"] = None
+        result["candidate_comment"] = None
         # -------------------------------
         # Job details
         # -------------------------------
