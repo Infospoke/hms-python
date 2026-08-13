@@ -98,6 +98,8 @@ class S3ResumeParser:
             return self._extract_from_pdf(file_stream)
         elif ext in [".docx", ".doc"]:
             return self._extract_from_docx(file_stream)
+        elif ext == ".xlsx":
+            return self._extract_from_xlsx(file_stream)
         else:
             raise ValueError(messages.UNSUPPORTED_FILE_FORMAT(extension))
 
@@ -187,6 +189,23 @@ class S3ResumeParser:
         except Exception as e:
             logger.error(f"XML Fallback failed: {e}")
             raise e
+
+    def _extract_from_xlsx(self, file_stream: BytesIO) -> str:
+        try:
+            import openpyxl
+            file_stream.seek(0)
+            wb = openpyxl.load_workbook(file_stream, read_only=True, data_only=True)
+            text_lines = []
+            for sheet in wb.worksheets:
+                text_lines.append(f"--- Sheet: {sheet.title} ---")
+                for row in sheet.iter_rows(values_only=True):
+                    row_values = [str(val).strip() for val in row if val is not None]
+                    if row_values:
+                        text_lines.append(" ".join(row_values))
+            return "\n".join(text_lines).strip()
+        except Exception as e:
+            logger.error(f"Error reading Excel file: {str(e)}")
+            raise Exception(f"Failed to parse Excel file: {str(e)}")
 
     def _clean_text_preserve_layout(self, text: str) -> str:
         if not text:

@@ -232,7 +232,7 @@ ENVIRONMENTS_DATA = CONFIG_DATA.get("environments", {})
 
 ENVIRONMENT = CONFIG_DATA.get("environment", "AWS_DEVELOPMENT")
 
-SUPPORTED_FORMATS = COMMON_CONFIG.get("supported_formats", [".pdf", ".docx", ".doc"])
+SUPPORTED_FORMATS = COMMON_CONFIG.get("supported_formats", [".pdf", ".docx", ".doc", ".xlsx"])
 SCORING_CONFIG = COMMON_CONFIG.get("scoring", {})
 MAX_SCORE = SCORING_CONFIG.get("max_score", 100)
 MIN_SCORE = SCORING_CONFIG.get("min_score", 0)
