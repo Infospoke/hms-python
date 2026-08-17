@@ -379,7 +379,7 @@ class OfferLetterRequest(BaseModel):
 
 class RegenerateOfferLetterRequest(BaseModel):
     application_id: int
-    candidate_id: int
+    candidate_id: str
     offer_id: int
     total_ctc: float
     approve: bool

@@ -377,7 +377,6 @@ class InterviewAssignment(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     job_id: Optional[int] = Field(default=None)
     plan_id: Optional[int] = Field(default=None)
-    round_id: Optional[int] = Field(default=None)
     stage_type_id: Optional[int] = Field(default=None)
     stage_name: Optional[str] = Field(default=None, max_length=255)
     interviewer_user_id: Optional[int] = Field(default=None)

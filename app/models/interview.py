@@ -125,7 +125,7 @@ class AIInterviewQuestions(SQLModel, table=(True)):
     question_type: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     questions: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)
-    job_id: int = Field(foreign_key="tb_create_job_details.job_id")
+    # job_id: int = Field(foreign_key="tb_create_job_details.job_id")
 
 class EvaluationSummary(SQLModel, table=True):
     __tablename__ = "tb_interview_evaluation_summary"
