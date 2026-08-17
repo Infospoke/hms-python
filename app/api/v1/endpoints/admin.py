@@ -390,16 +390,11 @@ def generate_offer_letter(
         if not upload_result.get("success"):
             print(f"Warning: Failed to upload offer letter to MinIO: {upload_result.get('error')}")
 
-        headers = {
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Access-Control-Expose-Headers": "Content-Disposition",
+        return {
+            "status": "ok",
+            "message": "successfully generated offer letter",
+            "minio_file_name": filename,
         }
-
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers=headers,
-        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -529,16 +524,11 @@ def regenerate_offer_letter(
         if not upload_result.get("success"):
             print(f"Warning: Failed to upload regenerated offer letter to MinIO: {upload_result.get('error')}")
 
-        headers = {
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Access-Control-Expose-Headers": "Content-Disposition",
+        return {
+            "status": "ok",
+            "message": "successfully generated offer letter",
+            "minio_file_name": filename,
         }
-
-        return StreamingResponse(
-            pdf_buffer,
-            media_type="application/pdf",
-            headers=headers,
-        )
     except Exception as e:
         logger.error(f"Failed to regenerate offer letter: {e}")
         import traceback
@@ -571,36 +561,36 @@ def approved_offer(
             raise HTTPException(status_code=400, detail="application_id is required")
 
         # Update OfferDetails status in database
-        try:
-            app_id_int = int(application_id)
-            offer_detail = session.exec(
-                select(models.OfferDetails).where(
-                    (models.OfferDetails.job_application_id == app_id_int) | 
-                    (models.OfferDetails.id == app_id_int)
-                )
-            ).first()
+        # try:
+        #     app_id_int = int(application_id)
+        #     offer_detail = session.exec(
+        #         select(models.OfferDetails).where(
+        #             (models.OfferDetails.job_application_id == app_id_int) | 
+        #             (models.OfferDetails.id == app_id_int)
+        #         )
+        #     ).first()
 
-            if offer_detail:
-                offer_detail.approve = approve
-                offer_detail.reject = not approve
-                offer_detail.responded_at = datetime.now()
-                session.add(offer_detail)
-            else:
-                new_offer_detail = models.OfferDetails(
-                    job_application_id=app_id_int,
-                    approve=approve,
-                    reject=not approve,
-                    responded_at=datetime.now()
-                )
-                session.add(new_offer_detail)
+        #     if offer_detail:
+        #         offer_detail.approve = approve
+        #         offer_detail.reject = not approve
+        #         offer_detail.responded_at = datetime.now()
+        #         session.add(offer_detail)
+        #     else:
+        #         new_offer_detail = models.OfferDetails(
+        #             job_application_id=app_id_int,
+        #             approve=approve,
+        #             reject=not approve,
+        #             responded_at=datetime.now()
+        #         )
+        #         session.add(new_offer_detail)
 
-            session.commit()
-        except Exception as db_err:
-            print(f"Warning: Failed to update OfferDetails in database: {db_err}")
-            try:
-                session.rollback()
-            except Exception:
-                pass
+        #     session.commit()
+        # except Exception as db_err:
+        #     print(f"Warning: Failed to update OfferDetails in database: {db_err}")
+        #     try:
+        #         session.rollback()
+        #     except Exception:
+        #         pass
 
         # If offer is rejected, return JSON response
         if not approve:
@@ -919,16 +909,11 @@ def process_offer_action(
             signed_pdf_bytes = original_pdf_bytes
         
         filename = object_name.split("/")[-1]
-        headers = {
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Access-Control-Expose-Headers": "Content-Disposition",
+        return {
+            "status": "ok",
+            "message": "successfully accepted offer letter",
+            "minio_file_name": filename,
         }
-
-        return StreamingResponse(
-            io.BytesIO(signed_pdf_bytes),
-            media_type="application/pdf",
-            headers=headers,
-        )
     except HTTPException:
         raise
     except Exception as e:
