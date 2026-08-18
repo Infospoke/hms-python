@@ -773,19 +773,15 @@ def process_offer_action(
                 )
             ).first()
 
-            status_str = "Accepted" if approve else "Rejected"
+            status_str = "Accepted"
             if offer_detail:
                 offer_detail.offer_status = status_str
-                offer_detail.approve = approve
-                offer_detail.reject = not approve
                 offer_detail.responded_at = datetime.now()
                 session.add(offer_detail)
             else:
                 new_offer_detail = models.OfferDetails(
                     job_application_id=app_id_int,
                     offer_status=status_str,
-                    approve=approve,
-                    reject=not approve,
                     responded_at=datetime.now()
                 )
                 session.add(new_offer_detail)
