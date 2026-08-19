@@ -151,4 +151,6 @@ class EvaluationSummary(SQLModel, table=True):
     hr_score: Optional[float] = Field(default=None)
     ai_score: Optional[float] = Field(default=None)
     ai_recommendation_status: Optional[str] = Field(default=None, max_length=255)
+    total_questions_count: Optional[int] = Field(default=None)
+    attempted_questions_count: Optional[int] = Field(default=None)
     created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)
