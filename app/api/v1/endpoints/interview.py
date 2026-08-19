@@ -1887,6 +1887,14 @@ def calculate_evaluation_summary(
                 )
             ).first() or 0
 
+        # Fetch total questions count from tb_ai_interview_questions
+        ai_questions = session.exec(
+            select(models.AIInterviewQuestions).where(
+                models.AIInterviewQuestions.application_id == application_id
+            )
+        ).first()
+        total_questions_count = ai_questions.number_of_questions if ai_questions else qna_count
+
         # 3. Fetch all human feedback records from tb_interview_feedback table directly
         feedback_list = session.exec(
             select(models.InterviewFeedback).where(
@@ -2021,6 +2029,8 @@ def calculate_evaluation_summary(
         evaluation_summary.candidate_email = job_application.email if job_application else "N/A"
         evaluation_summary.total_rounds_completed = completed_rounds_count
         evaluation_summary.total_rounds = total_rounds
+        evaluation_summary.total_questions_count = total_questions_count
+        evaluation_summary.attempted_questions_count = qna_count
         evaluation_summary.total_questions_count = qna_count
         evaluation_summary.average_score_across_rounds = average_score_across_rounds
         evaluation_summary.status = "PASS" if getattr(job_application, "in_person_interviews", False) else (job_application.current_stage or "INTERVIEW")
@@ -2046,6 +2056,8 @@ def calculate_evaluation_summary(
                 "candidate_email": job_application.email if job_application else "N/A",
                 "total_rounds_completed": completed_rounds_count,
                 "total_rounds": total_rounds,
+                "total_questions_count": total_questions_count,
+                "attempted_questions_count": qna_count,
                 "total_questions_count": qna_count,
                 "average_score_across_rounds": average_score_across_rounds,
                 "status": "PASS" if getattr(job_application, "in_person_interviews", False) else (job_application.current_stage or "INTERVIEW"),
@@ -2089,6 +2101,37 @@ def get_evaluation_summary(
                 detail=f"Evaluation summary not found for ID: {application_id}"
             )
 
+        # Get AI details for QNAs (attempted questions)
+        qna_count = evaluation_summary.attempted_questions_count
+        if qna_count is None:
+            interview_analysis = session.exec(
+                select(models.InterviewAnalysis).where(
+                    and_(
+                        models.InterviewAnalysis.application_id == application_id,
+                        models.InterviewAnalysis.analysis_completed == True
+                    )
+                )
+            ).first()
+
+            from sqlalchemy import func
+            qna_count = 0
+            if interview_analysis:
+                qna_count = session.exec(
+                    select(func.count(models.QNA_Analysis.id)).where(
+                        models.QNA_Analysis.interview_analysis_id == interview_analysis.id
+                    )
+                ).first() or 0
+
+        # Fetch total questions count from EvaluationSummary or tb_ai_interview_questions
+        total_questions_count = evaluation_summary.total_questions_count
+        if total_questions_count is None:
+            ai_questions = session.exec(
+                select(models.AIInterviewQuestions).where(
+                    models.AIInterviewQuestions.application_id == application_id
+                )
+            ).first()
+            total_questions_count = ai_questions.number_of_questions if ai_questions else qna_count
+
         return {
             "success": True,
             "data": {
@@ -2096,6 +2139,8 @@ def get_evaluation_summary(
                 "candidate_email": evaluation_summary.candidate_email,
                 "total_rounds_completed": evaluation_summary.total_rounds_completed,
                 "total_rounds": evaluation_summary.total_rounds,
+                "total_questions_count": total_questions_count,
+                "attempted_questions_count": qna_count,
                 "average_score_across_rounds": evaluation_summary.average_score_across_rounds,
                 "status": evaluation_summary.status,
                 "rounds_performance": evaluation_summary.rounds_performance,
