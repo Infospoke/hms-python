@@ -768,10 +768,19 @@ def process_offer_action(
             # 1. Update/Create OfferDetails
             offer_detail = session.exec(
                 select(models.OfferDetails).where(
-                    (models.OfferDetails.job_application_id == app_id_int) | 
-                    (models.OfferDetails.id == app_id_int)
+                    ((models.OfferDetails.job_application_id == app_id_int) | 
+                     (models.OfferDetails.id == app_id_int)) &
+                    (models.OfferDetails.re_release_offer_id == None)
                 )
             ).first()
+
+            if not offer_detail:
+                offer_detail = session.exec(
+                    select(models.OfferDetails).where(
+                        (models.OfferDetails.job_application_id == app_id_int) | 
+                        (models.OfferDetails.id == app_id_int)
+                    )
+                ).first()
 
             status_str = "Accepted"
             if offer_detail:
