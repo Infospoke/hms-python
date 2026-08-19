@@ -473,3 +473,4 @@ class OfferDetails(SQLModel, table=True):
     compensation: Optional[str] = Field(default=None, sa_column=Column(Text))
     offer_letter_template_id: Optional[int] = Field(default=None)
     offer_status: Optional[str] = Field(default=None, max_length=255)
+    re_release_offer_id: Optional[int] = Field(default=None)
