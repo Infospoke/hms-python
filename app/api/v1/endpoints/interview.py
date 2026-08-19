@@ -1718,6 +1718,25 @@ def fetch_interview_feedback(
         # Map overall_score directly to the overall_rating column from tb_interview_feedback
         feedback_data["overall_score"] = feedback.overall_rating
 
+        # Fetch current stage info (interviewer_id, start_time, end_time, interview_date) from tb_interview_current_stage
+        current_stage = session.exec(
+            select(models.InterviewCurrentStage).where(
+                models.InterviewCurrentStage.application_id == application_id,
+                models.InterviewCurrentStage.current_stage_type == current_stage_id
+            ).order_by(models.InterviewCurrentStage.id.desc())
+        ).first()
+
+        if current_stage:
+            feedback_data["interviewer_id"] = current_stage.interviewer_id
+            feedback_data["start_time"] = current_stage.start_time
+            feedback_data["end_time"] = current_stage.end_time
+            feedback_data["interview_date"] = current_stage.interview_date
+        else:
+            feedback_data["interviewer_id"] = None
+            feedback_data["start_time"] = None
+            feedback_data["end_time"] = None
+            feedback_data["interview_date"] = None
+
         return {"success": True, "data": feedback_data}
     except HTTPException:
         raise
