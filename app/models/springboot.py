@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime, date
+from datetime import datetime, date, time
 from sqlmodel import SQLModel, Field
 from sqlalchemy import Text, Column, String
 from app.utils import timezone_utils
@@ -365,10 +365,14 @@ class InterviewCurrentStage(SQLModel, table=True):
     to_schedule: Optional[bool] = Field(default=None)
     interview_completed: Optional[bool] = Field(default=None)
     interview_completed_on: Optional[datetime] = Field(default=None)
-    interview_date: Optional[datetime] = Field(default=None)
+    interview_date: Optional[date] = Field(default=None)
     feedback: Optional[bool] = Field(default=None)
     round_order: Optional[int] = Field(default=None)
     feedback_status: Optional[str] = Field(default="pending", max_length=255)
+    start_time: Optional[time] = Field(default=None)
+    end_time: Optional[time] = Field(default=None)
+    created_on: Optional[date] = Field(default=None)
+    stage_type_id: Optional[int] = Field(default=None)
 
 
 class InterviewAssignment(SQLModel, table=True):
