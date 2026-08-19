@@ -372,7 +372,6 @@ class InterviewCurrentStage(SQLModel, table=True):
     start_time: Optional[time] = Field(default=None)
     end_time: Optional[time] = Field(default=None)
     created_on: Optional[date] = Field(default=None)
-    stage_type_id: Optional[int] = Field(default=None)
 
 
 class InterviewAssignment(SQLModel, table=True):

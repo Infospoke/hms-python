@@ -363,6 +363,8 @@ class FetchResumeAnalysisUpdateRequest(BaseModel):
 class FetchInterviewFeedbackRequest(BaseModel):
     application_id: int
     current_stage_id: int
+    current_stage_type: Optional[int] = None
+
 class CalculateEvaluationSummaryRequest(BaseModel):
     application_id: int
 
