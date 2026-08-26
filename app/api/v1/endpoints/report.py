@@ -317,6 +317,7 @@ async def generate_applicants_report(
             used_analysis_id = resume_analysis.id if resume_analysis else None
 
             applicant_info = {
+                "candidate_id": app.candidate_id or "N/A",
                 "name": candidate_name,
                 "experience": experience,
                 "company": "-",
