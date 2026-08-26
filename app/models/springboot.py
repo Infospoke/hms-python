@@ -75,8 +75,6 @@ class User(SQLModel, table=True):
 
     active: bool
     deactivated: bool
-
-    business_unit_id: int
     department_id: int
     employment_type_id: int
     user_type_id: int
@@ -190,8 +188,6 @@ class BusinessUnit(SQLModel, table=True):
     __tablename__ = "tb_business_unit"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-
-    business_id: Optional[int] = None
     business_name: Optional[str] = Field(default=None, max_length=255)
 
 
