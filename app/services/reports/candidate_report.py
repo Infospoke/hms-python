@@ -293,7 +293,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
     c_name = "N/A"
     c_email = "N/A"
     c_phone = "N/A"
-    c_app_id = f"{(j_app.id if j_app else 0)}"
+    c_app_id = f"{(j_app.candidate_id if j_app and j_app.candidate_id else 'N/A')}"
     c_job = j_meta.job_title if j_meta else "N/A"
     c_req_id = j_meta.job_code if j_meta else "N/A"
     c_dept = "N/A"

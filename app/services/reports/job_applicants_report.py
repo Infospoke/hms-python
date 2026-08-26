@@ -1054,10 +1054,9 @@ def generate_applicants_pdf(
         return d
 
     headers = [
-        "No.",
+        "Candidate ID",
         "Candidate Name",
         "Experience",
-        "Current Company",
         "Applied On",
         "Screening Score",
         "Shortlisted",
@@ -1100,13 +1099,12 @@ def generate_applicants_pdf(
 
         app_data.append(
             [
-                Paragraph(str(idx), cs),
+                Paragraph(str(app.get("candidate_id", "N/A")), cs),
                 Paragraph(
                     str(app.get("name", "")),
                     ParagraphStyle("N", parent=cs, alignment=TA_LEFT),
                 ),
                 Paragraph(str(app.get("experience", "")), cs),
-                Paragraph(str(app.get("company", "-")), cs),
                 Paragraph(str(app.get("applied_on", "")), cs),
                 Paragraph(str(app.get("screening_score", "-")), cs),
                 chk_1,
@@ -1116,14 +1114,14 @@ def generate_applicants_pdf(
             ]
         )
 
-    atable = Table(app_data, colWidths=[25, 70, 65, 65, 50, 65, 55, 50, 55, 50])
+    atable = Table(app_data, colWidths=[70, 90, 65, 55, 70, 60, 60, 60, 60])
     atable.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), GREY_BG),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (9, 0), (9, -1), "CENTER"),
+                ("ALIGN", (8, 0), (8, -1), "CENTER"),
             ]
         )
     )

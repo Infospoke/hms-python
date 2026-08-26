@@ -65,6 +65,7 @@ class JobApplications(SQLModel, table=(True)):
     stage_entry_date: Optional[datetime] = Field(default=None)
     current_stage: Optional[str] = Field(default=None, max_length=255)
     in_person_interviews: Optional[bool] = Field(default=False)
+    candidate_id: Optional[str] = Field(default=None, max_length=255)
     # is_deleted: bool = Field(default=False)
 
 
