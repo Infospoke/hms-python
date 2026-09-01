@@ -430,7 +430,7 @@ class OfferDetails(SQLModel, table=True):
     notice_period: Optional[str] = Field(default=None, max_length=255)
     probation_period: Optional[str] = Field(default=None, max_length=255)
     joining_date: Optional[date] = Field(default=None)
-    created_by_roleId: Optional[int] = Field(default=None)
+    created_by_role_id: Optional[int] = Field(default=None)
     submit_financial_approval: Optional[bool] = Field(default=False)
     created_date: Optional[datetime] = Field(default=None)
     responded_at: Optional[datetime] = Field(default=None)
