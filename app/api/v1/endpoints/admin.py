@@ -324,7 +324,12 @@ async def get_qualifications_suggestions(req: JobRequirementsRequest):
 
     try:
         llm_resp = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
-        return QualificationsResponse(qualifications=llm_resp.get("qualifications", []))
+        qualifications = llm_resp.get("qualifications", [])
+
+        if not any(q.get("degree", "").lower() == "any graduate" for q in qualifications if isinstance(q, dict)):
+            qualifications.insert(0, {"degree": "Any Graduate"})
+
+        return QualificationsResponse(qualifications=qualifications)
     except Exception as e:
         logger.error(f"Qualifications suggestions failed: {str(e)}")
         raise HTTPException(

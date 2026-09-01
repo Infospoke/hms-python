@@ -58,6 +58,7 @@ def build_qualifications_prompt(req: JobRequirementsRequest) -> str:
     return f"""You are an expert technical recruiter and HR specialist.
 
 Based on the job details provided, suggest the most relevant educational qualifications that a candidate should possess.
+You must and should always include "Any Graduate" as one of the suggested qualifications.
 
 ### Job Details
 - Job Title: {req.job_title}
@@ -66,7 +67,8 @@ Based on the job details provided, suggest the most relevant educational qualifi
 - Seniority Level: {req.seniority.value}
 - Business Justification: {req.business_justification}
 
-Generate degree based on job_title, department, location, seniority, and business_justification. Use clear degree names like "B.Tech", "M.Tech", "Bachelor of Technology", "Master of Technology", "PhD", "MCA", "BCA", "MBA", etc.
+Generate degree based on job_title, department, location, seniority, and business_justification. Use clear degree names like "Any Graduate", "B.Tech", "M.Tech", "Bachelor of Technology", "Master of Technology", "PhD", "MCA", "BCA", "MBA", etc.
+Provide a list of maximum 5 qualifications (less is okay). You must always include "Any Graduate".
 
 Return your response as **valid JSON only**, no markdown, no extra text:
 
