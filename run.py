@@ -14,10 +14,13 @@ import uvicorn
 import logging
 import subprocess
 import atexit
+import certifi
 
 logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s: %(message)s")
 
 if __name__ == "__main__":
+
+    os.environ["SSL_CERT_FILE"] = certifi.where()
     from app.db.session import engine, create_db_and_tables
     from app.core.config import _load_interview_configs
 
