@@ -45,11 +45,11 @@ async def join_interview_seb(
     request: Request, session_id: str, session: Session = Depends(deps.get_session)
 ):
 
-    domain = "http://172.16.1.101:51555"
-    is_https = consts.PYTHON_BACKEND_URL.startswith("https")
+    domain = "http://[IP_ADDRESS]"
+    # is_https = consts.PYTHON_BACKEND_URL.startswith("https")
+    is_https = True
     seb_proto = "sebs://" if is_https else "seb://"
-
-    seb_launch_url = f"sebs://2g7634mr-5002.inc1.devtunnels.ms/api/seb/download/{session_id}"
+    seb_launch_url = f"sebs://nexus.infospoke.in:5002/api/seb/download/{session_id}"
     # seb_launch_url = f"{consts.HOST}/welcome/{session_id}/"
     # seb_launch_url = f"seb://2g7634mr-5002.inc1.devtunnels.ms/api/seb/download/{session_id}"
     # seb_launch_url = f"{seb_proto}{domain}/welcome/{session_id}"
@@ -77,7 +77,7 @@ async def get_seb_urls(session_id: str):
     is_https = consts.PYTHON_BACKEND_URL.startswith("https")
     seb_proto = "sebs://" if is_https else "seb://"
     return {
-        "seb_url": f"{seb_proto}{domain}/api/seb/download/{session_id}",
+        "seb_url": f"sebs://nexus.infospoke.in:5002/api/seb/download/{session_id}",
         # "join_url": f"{consts.PYTHON_BACKEND_URL}/api/seb/join/{session_id}",
-        "join_url": f"https://2g7634mr-5002.inc1.devtunnels.ms/api/seb/join/{session_id}",
+        "join_url": f"https://nexus.infospoke.in:5002/api/seb/join/{session_id}",
     }
