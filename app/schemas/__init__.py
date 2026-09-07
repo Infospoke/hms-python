@@ -94,6 +94,19 @@ class SubmitAnswersRequest(BaseModel):
     audios: dict
 
 
+class SubmitAnswerRequest(BaseModel):
+    """One question's answer, submitted on its own so the request body stays small."""
+
+    interview_session_id: str
+    question_index: int  # 1-based, matches the InterviewAnalysis.questions list
+    audio_base64: str
+    is_final: bool = False  # set True on the last question to finalize in one call
+
+
+class CompleteInterviewRequest(BaseModel):
+    interview_session_id: str
+
+
 class ProctoringLogRequest(BaseModel):
     interview_session_id: str
     event_type: str

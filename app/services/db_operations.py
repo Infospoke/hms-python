@@ -589,6 +589,143 @@ def create_pending_answers(
         return {"success": False, "error": "An internal server error occurred."}
 
 
+def upsert_pending_answer(
+    session: Session,
+    interview_session_id: str,
+    question_index: int,
+    audio_path: str,
+):
+    """Create or replace the pending QNA row for a single question.
+
+    Idempotent: re-submitting the same question repoints its audio instead of
+    inserting a duplicate, and never clobbers an answer a worker already began
+    analysing.
+    """
+    try:
+        interview_analysis = session.exec(
+            select(models.InterviewAnalysis)
+            .join(
+                models.InterviewSessions,
+                models.InterviewAnalysis.interview_session_id
+                == models.InterviewSessions.interview_session_id,
+            )
+            .where(
+                models.InterviewSessions.interview_session_id == interview_session_id
+            )
+        ).first()
+
+        if not interview_analysis:
+            return {"success": False, "error": "Interview analysis not found"}
+
+        question_text = "Unknown Question"
+        question_db_id = None
+        try:
+            idx = int(question_index) - 1
+            if 0 <= idx < len(interview_analysis.questions):
+                question_obj = interview_analysis.questions[idx]
+                if isinstance(question_obj, dict):
+                    question_text = (
+                        question_obj.get("question", "") or "Unknown Question"
+                    )
+                    question_db_id = question_obj.get("question_id")
+                else:
+                    question_text = str(question_obj)
+        except Exception:
+            pass
+
+        existing_rows = session.exec(
+            select(models.QNA_Analysis).where(
+                models.QNA_Analysis.interview_analysis_id == interview_analysis.id,
+                models.QNA_Analysis.is_deleted == False,  # noqa: E712
+            )
+        ).all()
+
+        existing = None
+        for row in existing_rows:
+            if question_db_id is not None:
+                if row.question_id == question_db_id:
+                    existing = row
+                    break
+            elif row.question_text == question_text:
+                existing = row
+                break
+
+        if existing is not None:
+            analysis = existing.ai_analysis or {}
+            if isinstance(analysis, dict) and analysis.get("status") in (
+                "processing",
+                "completed",
+            ):
+                logger.info(
+                    f"[submit-answer] Q{question_index} already "
+                    f"{analysis.get('status')}, ignoring re-submit for "
+                    f"session {interview_session_id}"
+                )
+                return {"success": True, "skipped": "already processed"}
+            existing.answer_text = f"AUDIO_PENDING:{audio_path}"
+            existing.ai_analysis = None
+            session.add(existing)
+        else:
+            session.add(
+                models.QNA_Analysis(
+                    application_id=interview_analysis.application_id,
+                    interview_analysis_id=interview_analysis.id,
+                    question_id=question_db_id,
+                    question_text=question_text,
+                    answer_text=f"AUDIO_PENDING:{audio_path}",
+                    ai_analysis=None,
+                )
+            )
+
+        if interview_analysis.status == models.StatusEnum.not_started:
+            interview_analysis.status = models.StatusEnum.in_progress
+            session.add(interview_analysis)
+
+        session.commit()
+        logger.info(
+            f"[submit-answer] pending answer stored for Q{question_index}, "
+            f"session {interview_session_id}"
+        )
+        return {"success": True}
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Error upserting pending answer: {err}")
+        return {"success": False, "error": "An internal server error occurred."}
+
+
+def mark_interview_completed(session: Session, interview_session_id: str):
+    """Flip InterviewAnalysis + InterviewSessions to completed."""
+    try:
+        interview_analysis = session.exec(
+            select(models.InterviewAnalysis).where(
+                models.InterviewAnalysis.interview_session_id == interview_session_id
+            )
+        ).first()
+        if not interview_analysis:
+            return {"success": False, "error": "Interview not found"}
+
+        interview_analysis.status = models.StatusEnum.completed
+        interview_analysis.interview_analysis_date = timezone_utils.get_ist_now()
+        session.add(interview_analysis)
+
+        session_obj = session.exec(
+            select(models.InterviewSessions).where(
+                models.InterviewSessions.interview_session_id == interview_session_id
+            )
+        ).first()
+        if session_obj:
+            session_obj.status = models.InterviewSessionStatusEnum.completed
+            session.add(session_obj)
+
+        session.commit()
+        logger.info(f"Interview {interview_session_id} marked completed")
+        return {"success": True}
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Error marking interview completed: {err}")
+        return {"success": False, "error": "An internal server error occurred."}
+
+
 def save_answers(
     session: Session,
     interview_session_id: str,

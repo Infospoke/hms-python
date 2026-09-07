@@ -1109,6 +1109,159 @@ async def submit_answers(
         )
 
 
+# Decoded-size ceiling for a single answer's audio (keep in sync with nginx
+# client_max_body_size, which caps the base64 body ~= this * 1.37 + overhead).
+MAX_ANSWER_AUDIO_BYTES = 30 * 1024 * 1024
+
+
+@router.post("/submit-answer")
+async def submit_answer(
+    data: SubmitAnswerRequest,
+    session: Session = Depends(deps.get_session),
+):
+    """Submit one question's audio answer. Call once per question during the
+    interview; pass is_final=True on the last one (or call /complete-interview)."""
+    import asyncio
+
+    interview_session_id = data.interview_session_id
+    logger.info(
+        f"submit-answer Q{data.question_index} for session {interview_session_id}"
+    )
+
+    interview_analysis = session.exec(
+        select(models.InterviewAnalysis).where(
+            models.InterviewAnalysis.interview_session_id == interview_session_id
+        )
+    ).first()
+
+    if not interview_analysis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found"
+        )
+    if interview_analysis.status == models.StatusEnum.completed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Interview already completed. Cannot submit more answers.",
+        )
+
+    try:
+        audio_bytes = base64.b64decode(data.audio_base64, validate=True)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="audio_base64 is not valid base64.",
+        )
+    if not audio_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Empty audio payload."
+        )
+    if len(audio_bytes) > MAX_ANSWER_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Answer audio exceeds the maximum allowed size.",
+        )
+
+    try:
+
+        def run_store():
+            timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
+            filename = (
+                f"audio_{interview_session_id}_{data.question_index}_{timestamp_str}.wav"
+            )
+            s3_key = f"ai-interviews/audio/{interview_session_id}/{filename}"
+
+            result = aws_helper.upload_audio_to_s3(audio_bytes, s3_key)
+            if not result.get("success"):
+                raise Exception(
+                    f"MinIO upload failed for Q{data.question_index}: "
+                    f"{result.get('error')}"
+                )
+            logger.info(
+                f"[submit-answer] Q{data.question_index} uploaded to MinIO: {s3_key}"
+            )
+
+            from app.db.session import engine
+
+            with Session(engine) as db_session:
+                res = db_operations.upsert_pending_answer(
+                    db_session,
+                    interview_session_id,
+                    data.question_index,
+                    s3_key,
+                )
+                if res.get("success") and data.is_final:
+                    db_operations.mark_interview_completed(
+                        db_session, interview_session_id
+                    )
+                return res
+
+        db_result = await asyncio.to_thread(run_store)
+
+        if not db_result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to store answer.",
+            )
+
+        return {
+            "message": "answer-submitted",
+            "question_index": data.question_index,
+            "is_final": data.is_final,
+            "status": "completed" if data.is_final else "in_progress",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in submit-answer: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal server error occurred.",
+        )
+
+
+@router.post("/complete-interview")
+async def complete_interview(
+    data: CompleteInterviewRequest,
+    session: Session = Depends(deps.get_session),
+):
+    """Finalize an interview once every answer has been submitted individually."""
+    import asyncio
+
+    interview_session_id = data.interview_session_id
+    logger.info(f"complete-interview for session {interview_session_id}")
+
+    interview_analysis = session.exec(
+        select(models.InterviewAnalysis).where(
+            models.InterviewAnalysis.interview_session_id == interview_session_id
+        )
+    ).first()
+    if not interview_analysis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found"
+        )
+    if interview_analysis.status == models.StatusEnum.not_started:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Interview not started yet.",
+        )
+
+    def run_finalize():
+        from app.db.session import engine
+
+        with Session(engine) as db_session:
+            return db_operations.mark_interview_completed(
+                db_session, interview_session_id
+            )
+
+    result = await asyncio.to_thread(run_finalize)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to finalize interview.",
+        )
+    return {"message": "interview-completed", "status": "completed"}
+
+
 @router.post("/move-to-schedule")
 def move_to_schedule(
     data: MoveToScheduleRequest,
