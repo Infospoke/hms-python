@@ -195,11 +195,11 @@ def get_image_base64(image_key):
         return None
 
 
-def upload_audio(audio_bytes, object_name):
-    """Upload raw audio bytes to MinIO."""
+def upload_audio(audio_bytes, object_name, content_type="audio/wav"):
+    """Upload raw audio bytes to MinIO under the given content type."""
     bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
     ensure_bucket_exists(bucket_name)
-    logger.info(f"MinIO: uploading audio as '{object_name}'")
+    logger.info(f"MinIO: uploading audio as '{object_name}' ({content_type})")
     try:
         minio_client = get_minio_client()
         minio_client.put_object(
@@ -207,7 +207,7 @@ def upload_audio(audio_bytes, object_name):
             object_name,
             data=BytesIO(audio_bytes),
             length=len(audio_bytes),
-            content_type="audio/wav",
+            content_type=content_type,
         )
         minio_url = f"http://{consts.MINIO_HOST}/{bucket_name}/{object_name}"
         logger.info(f"MinIO: successfully uploaded audio to {minio_url}")
@@ -250,8 +250,8 @@ def upload_image_to_s3(image_bytes, object_name):
     return upload_image(image_bytes, object_name)
 
 
-def upload_audio_to_s3(audio_bytes, object_name):
-    return upload_audio(audio_bytes, object_name)
+def upload_audio_to_s3(audio_bytes, object_name, content_type="audio/wav"):
+    return upload_audio(audio_bytes, object_name, content_type=content_type)
 
 
 def get_audio_bytes_from_s3(object_name):

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, WebSocket, WebSocketDisconnect, File, Form, UploadFile
+from typing import Annotated
 from sqlmodel import Session, select
 from app import models
 from app.api import deps
@@ -1109,23 +1110,81 @@ async def submit_answers(
         )
 
 
-# Decoded-size ceiling for a single answer's audio (keep in sync with nginx
-# client_max_body_size, which caps the base64 body ~= this * 1.37 + overhead).
+# Size ceiling for a single answer's audio file (keep in sync with nginx
+# client_max_body_size, which has to allow this plus multipart overhead).
 MAX_ANSWER_AUDIO_BYTES = 30 * 1024 * 1024
+
+# Container formats the browser recorder can hand us. MediaRecorder labels
+# audio-only webm/mp4 recordings with a video/* type, so those are allowed too.
+ANSWER_AUDIO_EXTENSIONS = {
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/wave": ".wav",
+    "audio/webm": ".webm",
+    "video/webm": ".webm",
+    "audio/ogg": ".ogg",
+    "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
+    "audio/mp4": ".m4a",
+    "video/mp4": ".m4a",
+    "audio/x-m4a": ".m4a",
+    "audio/aac": ".aac",
+    "audio/flac": ".flac",
+    "audio/x-flac": ".flac",
+}
+
+
+def _resolve_answer_audio_format(upload: UploadFile) -> tuple[str, str]:
+    """Pick the extension + content type to store an uploaded answer under.
+
+    The stored object keeps the real container format so the analysis worker
+    (and ffmpeg/librosa behind it) can decode it instead of guessing.
+    """
+    content_type = (upload.content_type or "").split(";")[0].strip().lower()
+    extension = ANSWER_AUDIO_EXTENSIONS.get(content_type)
+
+    if extension is None:
+        suffix = Path(upload.filename or "").suffix.lower()
+        if suffix in set(ANSWER_AUDIO_EXTENSIONS.values()):
+            extension = suffix
+            content_type = next(
+                ct for ct, ext in ANSWER_AUDIO_EXTENSIONS.items() if ext == suffix
+            )
+
+    if extension is None:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                "Unsupported audio format. Send one of: "
+                f"{', '.join(sorted(set(ANSWER_AUDIO_EXTENSIONS.values())))}."
+            ),
+        )
+
+    return extension, content_type
 
 
 @router.post("/submit-answer")
 async def submit_answer(
-    data: SubmitAnswerRequest,
+    interview_session_id: Annotated[str, Form()],
+    question_index: Annotated[
+        int, Form(description="1-based, matches the InterviewAnalysis questions list.")
+    ],
+    audio: Annotated[
+        UploadFile, File(description="The recorded answer as an audio file.")
+    ],
+    is_final: Annotated[
+        bool, Form(description="True on the last question to finalize in one call.")
+    ] = False,
     session: Session = Depends(deps.get_session),
 ):
-    """Submit one question's audio answer. Call once per question during the
-    interview; pass is_final=True on the last one (or call /complete-interview)."""
+    """Submit one question's audio answer as multipart/form-data. Call once per
+    question during the interview; pass is_final=True on the last one (or call
+    /complete-interview)."""
     import asyncio
 
-    interview_session_id = data.interview_session_id
     logger.info(
-        f"submit-answer Q{data.question_index} for session {interview_session_id}"
+        f"submit-answer Q{question_index} for session {interview_session_id} "
+        f"(file={audio.filename!r}, type={audio.content_type!r})"
     )
 
     interview_analysis = session.exec(
@@ -1144,13 +1203,19 @@ async def submit_answer(
             detail="Interview already completed. Cannot submit more answers.",
         )
 
-    try:
-        audio_bytes = base64.b64decode(data.audio_base64, validate=True)
-    except Exception:
+    extension, audio_content_type = _resolve_answer_audio_format(audio)
+
+    if audio.size is not None and audio.size > MAX_ANSWER_AUDIO_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="audio_base64 is not valid base64.",
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Answer audio exceeds the maximum allowed size.",
         )
+
+    try:
+        audio_bytes = await audio.read()
+    finally:
+        await audio.close()
+
     if not audio_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Empty audio payload."
@@ -1166,18 +1231,21 @@ async def submit_answer(
         def run_store():
             timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
             filename = (
-                f"audio_{interview_session_id}_{data.question_index}_{timestamp_str}.wav"
+                f"audio_{interview_session_id}_{question_index}_"
+                f"{timestamp_str}{extension}"
             )
             s3_key = f"ai-interviews/audio/{interview_session_id}/{filename}"
 
-            result = aws_helper.upload_audio_to_s3(audio_bytes, s3_key)
+            result = aws_helper.upload_audio_to_s3(
+                audio_bytes, s3_key, content_type=audio_content_type
+            )
             if not result.get("success"):
                 raise Exception(
-                    f"MinIO upload failed for Q{data.question_index}: "
+                    f"MinIO upload failed for Q{question_index}: "
                     f"{result.get('error')}"
                 )
             logger.info(
-                f"[submit-answer] Q{data.question_index} uploaded to MinIO: {s3_key}"
+                f"[submit-answer] Q{question_index} uploaded to MinIO: {s3_key}"
             )
 
             from app.db.session import engine
@@ -1186,10 +1254,10 @@ async def submit_answer(
                 res = db_operations.upsert_pending_answer(
                     db_session,
                     interview_session_id,
-                    data.question_index,
+                    question_index,
                     s3_key,
                 )
-                if res.get("success") and data.is_final:
+                if res.get("success") and is_final:
                     db_operations.mark_interview_completed(
                         db_session, interview_session_id
                     )
@@ -1205,9 +1273,9 @@ async def submit_answer(
 
         return {
             "message": "answer-submitted",
-            "question_index": data.question_index,
-            "is_final": data.is_final,
-            "status": "completed" if data.is_final else "in_progress",
+            "question_index": question_index,
+            "is_final": is_final,
+            "status": "completed" if is_final else "in_progress",
         }
     except HTTPException:
         raise
@@ -1221,10 +1289,13 @@ async def submit_answer(
 
 @router.post("/complete-interview")
 async def complete_interview(
-    data: CompleteInterviewRequest,
+    data: Annotated[CompleteInterviewRequest, Form(media_type="multipart/form-data")],
     session: Session = Depends(deps.get_session),
 ):
-    """Finalize an interview once every answer has been submitted individually."""
+    """Finalize an interview once every answer has been submitted individually.
+
+    Sent as multipart/form-data so it matches /submit-answer; it carries no
+    audio of its own, the recordings arrive through /submit-answer."""
     import asyncio
 
     interview_session_id = data.interview_session_id

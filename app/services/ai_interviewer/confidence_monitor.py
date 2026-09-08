@@ -27,7 +27,10 @@ class ConfidenceMonitor:
         self.micro_expression_count = 0
 
     async def generate_comprehensive_report(
-        self, audio_file_path: str = None, base64_audio: str = None
+        self,
+        audio_file_path: str = None,
+        base64_audio: str = None,
+        audio_extension: str = ".wav",
     ) -> dict:
         logger.info("Generating comprehensive confidence report...")
 
@@ -42,14 +45,16 @@ class ConfidenceMonitor:
                     audio_bytes = base64.b64decode(base64_audio)
                     import tempfile
 
+                    # Keep the real container extension so librosa/ffmpeg and the
+                    # STT engine decode the file instead of guessing at it.
                     with tempfile.NamedTemporaryFile(
-                        suffix=".wav", delete=False
+                        suffix=audio_extension, delete=False
                     ) as temp_file:
                         temp_file.write(audio_bytes)
                         temp_audio_path = temp_file.name
 
                     transcription, _ = await self.stt_engine.transcribe_base64_async(
-                        base64_audio
+                        base64_audio, filename=f"audio{audio_extension}"
                     )
 
                     voice_data = await asyncio.to_thread(

@@ -2,6 +2,7 @@ import threading
 import time
 import json
 import logging
+import os
 from typing import Optional
 from sqlmodel import Session, create_engine, select
 from app.core import config as consts
@@ -138,9 +139,12 @@ class AnalysisWorker(threading.Thread):
                         audio_bytes = s3_result["audio_bytes"]
                         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
+                        audio_extension = os.path.splitext(s3_key)[1] or ".wav"
+
                         audio_report = asyncio.run(
                             self.confidence_monitor.generate_comprehensive_report(
-                                base64_audio=audio_b64
+                                base64_audio=audio_b64,
+                                audio_extension=audio_extension,
                             )
                         )
 

@@ -94,16 +94,13 @@ class SubmitAnswersRequest(BaseModel):
     audios: dict
 
 
-class SubmitAnswerRequest(BaseModel):
-    """One question's answer, submitted on its own so the request body stays small."""
-
-    interview_session_id: str
-    question_index: int  # 1-based, matches the InterviewAnalysis.questions list
-    audio_base64: str
-    is_final: bool = False  # set True on the last question to finalize in one call
+# /submit-answer takes multipart/form-data (text fields + an `audio` file part),
+# so its fields are declared as Form()/File() params on the endpoint itself.
 
 
 class CompleteInterviewRequest(BaseModel):
+    """Sent as multipart/form-data, to match /submit-answer."""
+
     interview_session_id: str
 
 
