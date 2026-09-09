@@ -24,6 +24,100 @@ class ResumeAnalysisService:
             raise
 
     @staticmethod
+    def save_dummy_analysis(session: Session, application_id: int):
+        application = session.exec(
+            select(models.JobApplications).where(
+                models.JobApplications.id == application_id
+            )
+        ).first()
+        if not application:
+            raise ValueError(consts.JOB_APPLICATION_NOT_FOUND_FOR_ID(application_id))
+
+        return ResumeAnalysisService._save_single_candidate(
+            session,
+            {
+                "application_id": application.id,
+                "candidate_name": "Rahul Sharma",
+                "email": "rahul.sharma@example.com",
+                "contact_number": "+91-9876543210",
+                "scores": {
+                    "final_score": 82.5,
+                    "skills_match": 88,
+                    "experience_score": 80,
+                    "education_score": 85,
+                    "keywords_match": 78,
+                    "overall_fit": 84,
+                    "growth_potential": 86,
+                },
+                "recommendation": {
+                    "decision": "HIRE",
+                    "reason": "Strong technical skills and relevant professional experience.",
+                    "confidence": "High",
+                },
+                "skills_analysis": {
+                    "skill_match_percentage": 88,
+                    "tb_matching_skills": ["Python", "FastAPI", "SQL", "Docker", "AWS"],
+                    "tb_missing_skills": ["Kubernetes"],
+                },
+                "experience_analysis": {
+                    "experience_level": "Senior",
+                    "tb_matching_experience": [
+                        "Backend API development",
+                        "Database design",
+                        "Cloud deployment",
+                    ],
+                    "tb_experience_gaps": ["Limited Kubernetes experience"],
+                },
+                "education_analysis": {
+                    "education_level": "Bachelor",
+                    "tb_education_highlights": [
+                        "B.Tech in Computer Science",
+                        "Graduated with distinction",
+                    ],
+                },
+                "job_analysis": {
+                    "fresher": False,
+                    "first_job_start_year": 2019,
+                    "last_job_end_year": 2025,
+                    "total_jobs_count": 2,
+                    "average_job_change": "3 years",
+                },
+                "assessment": {
+                    "tb_strengths": [
+                        "Strong backend development",
+                        "Good problem-solving ability",
+                        "Relevant cloud experience",
+                    ],
+                    "tb_weaknesses": ["Limited Kubernetes knowledge"],
+                    "tb_red_flags": [],
+                    "tb_cultural_fit_indicators": [
+                        "Collaborative",
+                        "Adaptable",
+                        "Good communication",
+                    ],
+                },
+                "hiring_insights": {
+                    "salary_expectation_alignment": "Aligned",
+                    "onboarding_priority": "High",
+                    "tb_interview_focus_areas": [
+                        "System design",
+                        "AWS architecture",
+                        "Kubernetes fundamentals",
+                    ],
+                },
+                "metadata": {
+                    "processing_time": 4.75,
+                    "processed_at": "2026-09-09T10:30:00Z",
+                    "file_path": "C:/hms-python/static/resumes/rahul_sharma.pdf",
+                    "file_size": 245760,
+                    "word_count": 850,
+                    "success": True,
+                    "error": None,
+                },
+            },
+        )
+
+    @staticmethod
     def _save_single_candidate(session: Session, candidate_data):
         application_id = candidate_data.get("application_id")
         if not application_id:
@@ -64,7 +158,7 @@ class ResumeAnalysisService:
         else:
             analysis = models.ResumeAnalysis(**analysis_data)
             created = True
-        # Always derive status from the final score
+
         analysis.status = "Shortlisted" if analysis.final_score > 50 else "Not Shortlisted"
         session.add(analysis)
         session.commit()

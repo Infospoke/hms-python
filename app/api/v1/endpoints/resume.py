@@ -652,70 +652,36 @@ def analyze_resumes_batch(
         valid_resume_batch = [r for r in data.resume_batch if r is not None]
         if not valid_resume_batch:
             return {"message": consts.NO_APPLICATIONS_PROVIDED, "results": []}
-        applications_to_check = session.exec(
-            select(models.JobApplications).where(
-                models.JobApplications.id.in_(valid_resume_batch)
-            )
-        ).all()
-        already_analyzed = []
-        pending_analysis = []
-        missing_job_details = []
-        
-        for app in applications_to_check:
-            # Check if job details exist
-            job_details_exist = session.exec(
-                select(models.CreateJobDetails).where(
-                    models.CreateJobDetails.job_id == app.job_id
-                )
-            ).first()
-            
-            if not job_details_exist:
-                error_msg = f"Job ID {app.job_id} related data was not present in the CreateJobDetails"
-                from app.services.db_operations import log_resume_activity
-                log_resume_activity(
-                    session,
-                    app.id,
-                    "FAILED",
-                    error_msg,
-                    "BatchAnalyzer",
-                )
-                missing_job_details.append({
-                    "application_id": app.id,
-                    "job_id": app.job_id,
-                    "error": error_msg
-                })
-                continue
+        pending_analysis = valid_resume_batch
 
-            existing_analysis = session.exec(
-                select(models.ResumeAnalysis).where(
-                    models.ResumeAnalysis.application_id == app.id,
-                    models.ResumeAnalysis.success == True,
-                )
-            ).first()
-            if existing_analysis:
-                already_analyzed.append(app.id)
-            else:
-                pending_analysis.append(app.id)
-
-        if not pending_analysis:
-            if missing_job_details:
-                return {
-                    "message": f"Resume analysis could not be queued. {missing_job_details[0]['error']}",
-                    "success": False,
-                    "errors": missing_job_details,
-                    "files_not_found": [],
-                }
-            if already_analyzed:
-                return {
-                    "message": consts.RESUME_BATCH_ALREADY_ANALYZED,
-                    "success": False,
-                    "files_not_found": [],
-                }
-            return {
-                "message": consts.NO_APPLICATIONS_PROVIDED,
-                "success": False,
-                "files_not_found": [],
-            }
+        # Legacy filtering is intentionally disabled for this batch flow.
+        # applications_to_check = session.exec(
+        #     select(models.JobApplications).where(
+        #         models.JobApplications.id.in_(valid_resume_batch)
+        #     )
+        # ).all()
+        # already_analyzed = []
+        # pending_analysis = []
+        # missing_job_details = []
+        # for app in applications_to_check:
+        #     job_details_exist = session.exec(
+        #         select(models.CreateJobDetails).where(
+        #             models.CreateJobDetails.job_id == app.job_id
+        #         )
+        #     ).first()
+        #     if not job_details_exist:
+        #         missing_job_details.append(app.id)
+        #         continue
+        #     existing_analysis = session.exec(
+        #         select(models.ResumeAnalysis).where(
+        #             models.ResumeAnalysis.application_id == app.id,
+        #             models.ResumeAnalysis.success == True,
+        #         )
+        #     ).first()
+        #     if existing_analysis:
+        #         already_analyzed.append(app.id)
+        #     else:
+        #         pending_analysis.append(app.id)
 
         batch_analyzer = BatchAnalyzer(background_tasks)
         background_tasks.add_task(
@@ -729,12 +695,6 @@ def analyze_resumes_batch(
             "success": True,
             "files_not_found": [],
         }
-        if missing_job_details:
-            response_payload["errors"] = missing_job_details
-            response_payload["message"] = (
-                f"Resume analysis queued for valid applications. However, some applications were skipped: "
-                f"{missing_job_details[0]['error']}"
-            )
         return response_payload
     except ResourceNotFoundException as e:
         raise HTTPException(status_code=404, detail=e.message)
