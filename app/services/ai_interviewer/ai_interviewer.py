@@ -90,7 +90,6 @@ class AIInterviewer(BaseInterviewer):
             job_description=self.job_description,
             experience=self.experience,
             skills=self.skills,
-            resume_excerpt=self.resume_text[:1500],
             count=self.max_questions,
             technical_count = self.max_questions//2 if self.max_questions%2 == 0 else (self.max_questions//2 + 1),
             behavioral_count = self.max_questions//2,
@@ -154,35 +153,35 @@ class AIInterviewer(BaseInterviewer):
 You are an expert **Senior Interviewer**.
 Your goal is to generate customized interview questions for the role of **{self.job_role}**.
 
-**Interview Context:**
+**Job Description & Role Context:**
 - Role: {self.job_role}
-- Job Description (JD):
+- Experience Level Required: {self.experience}
+- Key Skills: {self.skills}
+- Job Description:
 {self.job_description}
 
-**Candidate Context:**
-- Experience Level: {self.experience}
-- Key Skills: {self.skills}
-- Resume Summary: "{self.resume_text[:1500]}"
-
 **Task:**
-Generate exactly {count} interview questions.
+Generate exactly {count} interview questions based strictly on the Job Description and required competencies.
 - Difficulty Level: {difficulty}
 - Allowed Question Types: {", ".join(question_types)}
 
-Each question must be tailored to the candidate's background and the job description.
+**CORE OBJECTIVE - STRICTLY GROUNDED IN THE JOB DESCRIPTION:**
+- EVERY single question MUST be directly, specifically, and exclusively derived from the exact technologies, tools, core responsibilities, and domain challenges outlined in the Job Description above.
+- Target the specific tech stack, frameworks, system architectures, workflows, and tasks detailed in the JD.
+- Formulate questions around realistic scenarios, technical trade-offs, and problem-solving situations that this specific candidate will encounter in this role based on the JD.
 
 **VARIETY, UNIQUENESS & DIVERSITY (CRITICAL):**
 - Ensure all questions are **highly unique, distinct, and creative**.
 - Do not repeat the same question or ask similar questions across different types.
 - EVERY single question must be completely different. DO NOT repeat the same query or sentence structure.
-- AVOID generic or textbook questions.
 - Every time this generator runs, it must produce a completely different set of questions.
 - Context ID: {uuid.uuid4()}
 
 **CRITICAL GUIDELINES - QUESTION STRUCTURE:**
-1. **SINGLE QUESTION CONSTRAINT:** Each generated question MUST contain exactly ONE question mark. Keep the wording punchy and concise (maximum 20-30 words).
-2. **TTS-Friendly Formatting:** Avoid parentheses, brackets, or abbreviations (e.g., use "for example" instead of "e.g.").
-3. **Conversational Tone:** Avoid textbook definition questions. Ask how they applied a skill or would handle a scenario.
+1. **DIRECT INTERROGATIVE QUESTION CONSTRAINT:** Each generated question MUST be phrased as an actual direct question (e.g. "How would you...", "Can you describe...?", "What approach do you take when...?") and MUST contain exactly ONE question mark '?'. Never return statement commands like "Describe..." or "Tell me...".
+2. **BREVITY:** Keep wording punchy and concise (maximum 20-30 words).
+3. **TTS-Friendly Formatting:** Avoid parentheses, brackets, or abbreviations (e.g., use "for example" instead of "e.g.").
+4. **Conversational Tone:** Avoid textbook definition questions. Ask how they applied a skill or would handle a scenario.
 
 **Output Format:**
 Return a raw JSON object containing the total questions count and the list of question details. You must strictly adhere to the following JSON structure and return ONLY valid JSON:

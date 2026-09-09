@@ -11,7 +11,6 @@ from app.services.ai_interviewer.ai_interviewer import AIInterviewer
 from app.services.live_stream_manager import stream_manager
 from app.utils import utils
 from app.utils import timezone_utils
-from app.services.resume_parser.s3_resume_parser import S3ResumeParser
 from app.services.seb.seb_verify import verify_seb
 from app.services import db_operations
 from app.services import minio_helper as aws_helper
@@ -1750,17 +1749,6 @@ def generate_ai_questions(
     try:
 
 
-        resume_analysis = session.exec(
-            select(models.ResumeAnalysis).where(
-                models.ResumeAnalysis.application_id == data.application_id
-            )
-        ).first()
-        if not resume_analysis:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Resume analysis not found for application_id: {data.application_id}",
-            )
-
         job_application = session.exec(
             select(models.JobApplications).where(
                 models.JobApplications.id == data.application_id
@@ -1782,15 +1770,6 @@ def generate_ai_questions(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Create job details not found for job_id: {job_application.job_id}",
             )
-
-
-
-        resume_parser = S3ResumeParser()
-        resume_text_response = resume_parser.extract_text(resume_analysis.file_path)
-        if isinstance(resume_text_response, dict):
-            resume_text = resume_text_response.get("text", "") or "No resume text available."
-        else:
-            resume_text = resume_text_response or "No resume text available."
 
         # Combine work details as job info
         info_parts = []
@@ -1866,13 +1845,26 @@ def generate_ai_questions(
             skills=skills,
         )
 
+        exp_parts = []
+        if job_details.min_experience is not None and job_details.max_experience is not None:
+            exp_parts.append(f"{job_details.min_experience} to {job_details.max_experience} years")
+        elif job_details.min_experience is not None:
+            exp_parts.append(f"Minimum {job_details.min_experience} years")
+        elif job_details.max_experience is not None:
+            exp_parts.append(f"Up to {job_details.max_experience} years")
+        exp_level_str = ", ".join(exp_parts) if exp_parts else "Not specified"
+
+        topics = [s.strip() for s in (job_details.skills_must_have or "").split(",") if s.strip()]
+        if not topics:
+            topics = [db_operations.get_job_title(session, job_details.job_id) or "General"]
+
         technial_interviewer = AIInterviewer(
             job_role=db_operations.get_job_title(session, job_details.job_id),
             job_description=job_description,
-            experience=resume_analysis.experience_level,
-            skills=skills,
-            topics=resume_analysis.tb_interview_focus_areas,
-            resume_text=resume_text,
+            experience=exp_level_str,
+            skills=skills or "",
+            topics=topics,
+            resume_text="",
         )
 
         questions_response = technial_interviewer.generate_custom_questions(
