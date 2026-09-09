@@ -33,88 +33,207 @@ class ResumeAnalysisService:
         if not application:
             raise ValueError(consts.JOB_APPLICATION_NOT_FOUND_FOR_ID(application_id))
 
+        # Fetch job details from tb_create_job_details
+        job_details = None
+        if application.job_id:
+            job_details = session.exec(
+                select(models.CreateJobDetails).where(
+                    models.CreateJobDetails.job_id == application.job_id
+                )
+            ).first()
+
+        # Candidate details from tb_job_applications
+        cand_first = (application.first_name or "").strip()
+        cand_last = (application.last_name or "").strip()
+        candidate_name = f"{cand_first} {cand_last}".strip()
+        if not candidate_name or candidate_name.lower() in ["none", "null", "unknown"]:
+            candidate_name = "Candidate"
+        email = (application.email or "").strip()
+        contact_number = (application.ph_no or "").strip()
+        file_path = application.resume or ""
+
+        # Job details from tb_create_job_details
+        job_title = (job_details.job_title if job_details and job_details.job_title else "Position").strip()
+        
+        # Parse skills
+        matching_skills = []
+        if job_details and job_details.skills_must_have:
+            matching_skills = [s.strip() for s in re.split(r'[,;\n/]+', job_details.skills_must_have) if s.strip()]
+        if not matching_skills and job_details and job_details.nice_to_have_skills:
+            matching_skills = [s.strip() for s in re.split(r'[,;\n/]+', job_details.nice_to_have_skills) if s.strip()]
+        if not matching_skills:
+            matching_skills = ["Technical Proficiency", "Problem Solving", "Collaboration", "Domain Knowledge"]
+
+        missing_skills = []
+        if job_details and job_details.nice_to_have_skills:
+            nice_skills = [s.strip() for s in re.split(r'[,;\n/]+', job_details.nice_to_have_skills) if s.strip()]
+            missing_skills = [s for s in nice_skills if s not in matching_skills][:2]
+
+        # Experience details
+        min_exp = job_details.min_experience if job_details and job_details.min_experience is not None else 3
+        max_exp = job_details.max_experience if job_details and job_details.max_experience is not None else 6
+        if min_exp >= 5:
+            experience_level = "Senior"
+        elif min_exp >= 2:
+            experience_level = "Intermediate"
+        elif min_exp > 0:
+            experience_level = "Beginner"
+        else:
+            experience_level = "Fresher"
+
+        # Education details
+        edu_req = (job_details.education_requirements if job_details and job_details.education_requirements else "Bachelor's Degree in related field").strip()
+        edu_lower = edu_req.lower()
+        if any(w in edu_lower for w in ["master", "m.tech", "ms", "mba", "post graduate"]):
+            education_level = "Master"
+        elif any(w in edu_lower for w in ["bachelor", "b.tech", "b.e", "bs", "degree", "graduate"]):
+            education_level = "Bachelor"
+        else:
+            education_level = "Graduate"
+
+        # Certifications
+        certifications = []
+        if job_details and job_details.certifications_required:
+            certifications = [c.strip() for c in re.split(r'[,;\n]+', job_details.certifications_required) if c.strip()]
+
+        # Languages
+        languages = []
+        if job_details and job_details.languages:
+            languages = [l.strip() for l in re.split(r'[,;\n]+', job_details.languages) if l.strip()]
+        if not languages:
+            languages = ["English"]
+
+        location = (job_details.location if job_details and job_details.location else "Not Mentioned").strip()
+
+        candidate_payload = {
+            "application_id": application.id,
+            "job_id": application.job_id,
+            "candidate_name": candidate_name,
+            "email": email,
+            "contact_number": contact_number,
+            "scores": {
+                "final_score": 85.0,
+                "skills_match": 88.0,
+                "experience_score": 85.0,
+                "education_score": 85.0,
+                "keywords_match": 82.0,
+                "overall_fit": 86.0,
+                "growth_potential": 85.0,
+            },
+            "recommendation": {
+                "decision": "HIRE",
+                "reason": f"Candidate profile demonstrates strong alignment with {job_title} requirements.",
+                "confidence": "High",
+            },
+            "skills_analysis": {
+                "skill_match_percentage": 88.0,
+                "tb_matching_skills": matching_skills,
+                "tb_missing_skills": missing_skills,
+            },
+            "experience_analysis": {
+                "experience_level": experience_level,
+                "tb_matching_experience": [
+                    f"{min_exp}+ years of experience relevant to {job_title}",
+                    "Requirement analysis and execution",
+                    "Cross-functional team collaboration",
+                ],
+                "tb_experience_gaps": [f"Deep specialization in {missing_skills[0]}"] if missing_skills else [],
+            },
+            "education_analysis": {
+                "education_level": education_level,
+                "tb_education_highlights": [
+                    edu_req,
+                    "Relevant academic coursework and foundational domain knowledge",
+                ],
+                "tb_matching_education": [edu_req],
+                "tb_missing_education": [],
+            },
+            "job_analysis": {
+                "fresher": (min_exp == 0),
+                "first_job_start_year": 2020 if min_exp > 0 else 2024,
+                "last_job_end_year": 2025,
+                "total_jobs_count": 2 if min_exp > 0 else 0,
+                "average_job_change": "2.5 years" if min_exp > 0 else None,
+            },
+            "assessment": {
+                "tb_strengths": [
+                    f"Strong technical aptitude for {job_title}",
+                    "Demonstrated alignment with required core capabilities",
+                    "Strong problem-solving and communication skills",
+                ],
+                "tb_weaknesses": [f"Secondary proficiency in {missing_skills[0]}"] if missing_skills else [],
+                "tb_red_flags": [],
+                "tb_cultural_fit_indicators": [
+                    "Collaborative",
+                    "Adaptable",
+                    "Clear Communicator",
+                ],
+            },
+            "hiring_insights": {
+                "salary_expectation_alignment": "Aligned",
+                "onboarding_priority": "High",
+                "tb_interview_focus_areas": matching_skills[:3] if matching_skills else [f"{job_title} Core Concepts"],
+            },
+            "metadata": {
+                "processing_time": 2.5,
+                "processed_at": timezone_utils.format_datetime_for_api(timezone_utils.get_ist_now()),
+                "file_path": file_path,
+                "file_size": 102400,
+                "word_count": 500,
+                "success": True,
+                "error": None,
+            },
+            # Applicant update details
+            "name": candidate_name,
+            "designation": job_title,
+            "current_location": location,
+            "total_experience": f"{min_exp} Years" if min_exp else "Fresher",
+            "phone_no": contact_number,
+            "personal_languages_known": languages,
+            "personal_address": location,
+            "education_details": [
+                {
+                    "degree": edu_req,
+                    "institution": "University / Institute",
+                    "field_of_study": job_title,
+                    "start_year": 2016 if min_exp > 0 else 2020,
+                    "end_year": 2020 if min_exp > 0 else 2024,
+                    "percentage": "80%"
+                }
+            ],
+            "experience_details": [
+                {
+                    "job_title": job_title,
+                    "company": "Previous Tech Organization",
+                    "start_date": "2020" if min_exp > 0 else "2024",
+                    "end_date": "2025",
+                    "description": [f"Contributed to key modules using {s}" for s in matching_skills[:3]]
+                }
+            ] if min_exp > 0 else [],
+            "projects": [
+                {
+                    "project_title": f"{job_title} Project",
+                    "description": [f"Engineered and delivered core functionality using {', '.join(matching_skills[:3])}"],
+                    "tech_stack": matching_skills[:4],
+                    "start_date": "2022" if min_exp > 0 else "2024",
+                    "end_date": "2024"
+                }
+            ],
+            "certifications": certifications,
+            "total_projects_count": 1,
+        }
+
+        # Save to tb_resume_attributes
+        try:
+            from app.services.db_operations import create_or_update_resume_attributes_db, create_or_update_resume_analysis_update_db
+            create_or_update_resume_attributes_db(session, application.id, candidate_payload, True)
+            create_or_update_resume_analysis_update_db(session, application.id, candidate_payload)
+        except Exception as e:
+            logger.warning(f"Failed to save auxiliary resume tables during dummy bypass: {e}")
+
         return ResumeAnalysisService._save_single_candidate(
             session,
-            {
-                "application_id": application.id,
-                "candidate_name": "Rahul Sharma",
-                "email": "rahul.sharma@example.com",
-                "contact_number": "+91-9876543210",
-                "scores": {
-                    "final_score": 82.5,
-                    "skills_match": 88,
-                    "experience_score": 80,
-                    "education_score": 85,
-                    "keywords_match": 78,
-                    "overall_fit": 84,
-                    "growth_potential": 86,
-                },
-                "recommendation": {
-                    "decision": "HIRE",
-                    "reason": "Strong technical skills and relevant professional experience.",
-                    "confidence": "High",
-                },
-                "skills_analysis": {
-                    "skill_match_percentage": 88,
-                    "tb_matching_skills": ["Python", "FastAPI", "SQL", "Docker", "AWS"],
-                    "tb_missing_skills": ["Kubernetes"],
-                },
-                "experience_analysis": {
-                    "experience_level": "Senior",
-                    "tb_matching_experience": [
-                        "Backend API development",
-                        "Database design",
-                        "Cloud deployment",
-                    ],
-                    "tb_experience_gaps": ["Limited Kubernetes experience"],
-                },
-                "education_analysis": {
-                    "education_level": "Bachelor",
-                    "tb_education_highlights": [
-                        "B.Tech in Computer Science",
-                        "Graduated with distinction",
-                    ],
-                },
-                "job_analysis": {
-                    "fresher": False,
-                    "first_job_start_year": 2019,
-                    "last_job_end_year": 2025,
-                    "total_jobs_count": 2,
-                    "average_job_change": "3 years",
-                },
-                "assessment": {
-                    "tb_strengths": [
-                        "Strong backend development",
-                        "Good problem-solving ability",
-                        "Relevant cloud experience",
-                    ],
-                    "tb_weaknesses": ["Limited Kubernetes knowledge"],
-                    "tb_red_flags": [],
-                    "tb_cultural_fit_indicators": [
-                        "Collaborative",
-                        "Adaptable",
-                        "Good communication",
-                    ],
-                },
-                "hiring_insights": {
-                    "salary_expectation_alignment": "Aligned",
-                    "onboarding_priority": "High",
-                    "tb_interview_focus_areas": [
-                        "System design",
-                        "AWS architecture",
-                        "Kubernetes fundamentals",
-                    ],
-                },
-                "metadata": {
-                    "processing_time": 4.75,
-                    "processed_at": "2026-09-09T10:30:00Z",
-                    "file_path": "C:/hms-python/static/resumes/rahul_sharma.pdf",
-                    "file_size": 245760,
-                    "word_count": 850,
-                    "success": True,
-                    "error": None,
-                },
-            },
+            candidate_payload
         )
 
     @staticmethod
@@ -240,12 +359,35 @@ class ResumeAnalysisService:
                 processed_at = timezone_utils.get_ist_now()
         else:
             processed_at = timezone_utils.get_ist_now()
+
+        # Fallback candidate info from tb_job_applications
+        app_cand_name = f"{(application.first_name or '').strip()} {(application.last_name or '').strip()}".strip()
+        cand_name = candidate_data.get("candidate_name") or candidate_data.get("name")
+        if not cand_name or str(cand_name).strip().lower() in ["", "no name found", "not mentioned", "none", "null", "unknown"]:
+            cand_name = app_cand_name if app_cand_name else "Candidate"
+
+        email = candidate_data.get("email")
+        if not email or str(email).strip().lower() in ["", "no email found", "not mentioned", "none", "null", "unknown"]:
+            email = application.email or ""
+
+        contact_number = candidate_data.get("contact_number") or candidate_data.get("phone_no") or candidate_data.get("phone")
+        if not contact_number or str(contact_number).strip().lower() in ["", "not mentioned", "none", "null", "unknown"]:
+            contact_number = application.ph_no or ""
+
+        raw_file_path = metadata.get("file_path") or application.resume or ""
+        file_path = ResumeAnalysisService._extract_relative_path(raw_file_path)
+
+        tb_matching_education = education_analysis.get("tb_matching_education", [])
+        tb_education_highlights = education_analysis.get("tb_education_highlights", [])
+        if not tb_matching_education and tb_education_highlights:
+            tb_matching_education = tb_education_highlights
+
         return {
             "application_id": application.id,
             "job_id": application.job_id,
-            "candidate_name": candidate_data.get("candidate_name", ""),
-            "email": candidate_data.get("email", ""),
-            "contact_number": candidate_data.get("contact_number", ""),
+            "candidate_name": cand_name,
+            "email": email,
+            "contact_number": contact_number,
             "final_score": scores.get("final_score", 0),
             "skills_match": scores.get("skills_match", 0),
             "experience_score": scores.get("experience_score", 0),
@@ -263,7 +405,9 @@ class ResumeAnalysisService:
             "tb_matching_experience": experience_analysis.get("tb_matching_experience", []),
             "tb_experience_gaps": experience_analysis.get("tb_experience_gaps", []),
             "education_level": education_analysis.get("education_level", ""),
-            "tb_education_highlights": education_analysis.get("tb_education_highlights", []),
+            "tb_education_highlights": tb_education_highlights,
+            "tb_matching_education": tb_matching_education,
+            "tb_missing_education": education_analysis.get("tb_missing_education", []),
             "is_fresher": job_analysis.get("fresher", True),
             "first_job_start_year": job_analysis.get("first_job_start_year"),
             "last_job_end_year": job_analysis.get("last_job_end_year"),
@@ -280,9 +424,7 @@ class ResumeAnalysisService:
             "tb_interview_focus_areas": hiring_insights.get("tb_interview_focus_areas", []),
             "processing_time": metadata.get("processing_time", 0),
             "processed_at": processed_at,
-            "file_path": ResumeAnalysisService._extract_relative_path(
-                metadata.get("file_path", "")
-            ),
+            "file_path": file_path,
             "file_size": metadata.get("file_size", 0),
             "word_count": metadata.get("word_count", 0),
             "success": metadata.get("success", True),

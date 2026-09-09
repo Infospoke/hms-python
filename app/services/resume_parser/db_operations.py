@@ -86,7 +86,7 @@ def create_or_update_resume_attributes_db(
             models.ResumeAttributes.application_id == job_application.id
         )
         resume_attribute = session.exec(statement).first()
-        analysis_json_str = json.dumps(result)
+        analysis_json_str = json.dumps(result, default=str)
         if resume_attribute:
             resume_attribute.analysis_json = analysis_json_str
             resume_attribute.analysis_success = analysis_success
@@ -134,112 +134,122 @@ def create_or_update_resume_analysis_db(
             models.ResumeAnalysis.application_id == job_application.id
         )
         resume_analysis = session.exec(statement).first()
-        if resume_analysis:
-            job_id = (
-            session.exec(
-                select(models.JobApplications).where(
-                    models.JobApplications.id == application_id
+
+        # Query job_details from tb_create_job_details
+        job_details = None
+        if job_application.job_id:
+            job_details = session.exec(
+                select(models.CreateJobDetails).where(
+                    models.CreateJobDetails.job_id == job_application.job_id
                 )
-            )
-            .first()
-            .job_id
-            )
+            ).first()
+
+        scores = result.get("scores", {})
+        recommendation = result.get("recommendation", {})
+        skills_analysis = result.get("skills_analysis", {})
+        experience_analysis = result.get("experience_analysis", {})
+        education_analysis = result.get("education_analysis", {})
+        job_analysis = result.get("job_analysis", {})
+        assessment = result.get("assessment", {})
+        hiring_insights = result.get("hiring_insights", {})
+        metadata = result.get("metadata", {})
+
+        # Extract / fallback candidate data from tb_job_applications
+        app_cand_name = f"{(job_application.first_name or '').strip()} {(job_application.last_name or '').strip()}".strip()
+        cand_name = result.get("candidate_name") or result.get("name")
+        if not cand_name or str(cand_name).strip().lower() in ["", "no name found", "not mentioned", "none", "null", "unknown"]:
+            cand_name = app_cand_name if app_cand_name else "Candidate"
+
+        cand_email = result.get("email")
+        if not cand_email or str(cand_email).strip().lower() in ["", "no email found", "not mentioned", "none", "null", "unknown"]:
+            cand_email = job_application.email or ""
+
+        cand_phone = result.get("contact_number") or result.get("phone_no") or result.get("phone")
+        if not cand_phone or str(cand_phone).strip().lower() in ["", "not mentioned", "none", "null", "unknown"]:
+            cand_phone = job_application.ph_no or ""
+
+        raw_file_path = metadata.get("file_path") or job_application.resume or ""
+        file_path = extract_relative_path(raw_file_path)
+
+        tb_matching_education = education_analysis.get("tb_matching_education", [])
+        tb_education_highlights = education_analysis.get("tb_education_highlights", [])
+        if not tb_matching_education and tb_education_highlights:
+            tb_matching_education = tb_education_highlights
+
+        is_fresher_val = job_analysis.get("fresher")
+        if is_fresher_val is None:
+            is_fresher_val = (job_details.min_experience == 0) if job_details and job_details.min_experience is not None else False
+
+        processed_at = metadata.get("processed_at")
+        if not processed_at:
+            processed_at = get_ist_now()
+        elif isinstance(processed_at, str):
+            try:
+                processed_at = parse_datetime_to_ist(processed_at)
+            except Exception:
+                processed_at = get_ist_now()
+
+        mapped_values = {
+            "candidate_name": cand_name,
+            "email": cand_email,
+            "contact_number": cand_phone,
+            "job_id": job_application.job_id,
+            "file_path": file_path,
+            "final_score": scores.get("final_score", 0.0),
+            "skills_match": scores.get("skills_match", 0.0),
+            "experience_score": scores.get("experience_score", 0.0),
+            "education_score": scores.get("education_score", 0.0),
+            "keywords_match": scores.get("keywords_match", 0.0),
+            "overall_fit": scores.get("overall_fit", 0.0),
+            "growth_potential": scores.get("growth_potential", 0.0),
+            "recommendation_decision": recommendation.get("decision", ""),
+            "recommendation_reason": recommendation.get("reason", ""),
+            "recommendation_confidence": recommendation.get("confidence", ""),
+            "skill_match_percentage": skills_analysis.get(
+                "skill_match_percentage", 0.0
+            ),
+            "tb_matching_skills": skills_analysis.get("tb_matching_skills", []),
+            "tb_missing_skills": skills_analysis.get("tb_missing_skills", []),
+            "tb_matching_experience": experience_analysis.get("tb_matching_experience", []),
+            "tb_experience_gaps": experience_analysis.get("tb_experience_gaps", []),
+            "experience_level": experience_analysis.get("experience_level", ""),
+            "tb_education_highlights": tb_education_highlights,
+            "tb_matching_education": tb_matching_education,
+            "tb_missing_education": education_analysis.get("tb_missing_education", []),
+            "education_level": education_analysis.get("education_level", ""),
+            "is_fresher": bool(is_fresher_val),
+            "first_job_start_year": job_analysis.get("first_job_start_year", 0),
+            "last_job_end_year": job_analysis.get("last_job_end_year", 0),
+            "total_jobs_count": job_analysis.get("total_jobs_count", 0),
+            "average_job_change": job_analysis.get("average_job_change", None),
+            "tb_strengths": assessment.get("tb_strengths", []),
+            "tb_weaknesses": assessment.get("tb_weaknesses", []),
+            "tb_red_flags": assessment.get("tb_red_flags", []),
+            "tb_cultural_fit_indicators": assessment.get("tb_cultural_fit_indicators") or assessment.get("cultural_fit_indications") or [],
+            "salary_expectation_alignment": hiring_insights.get(
+                "salary_expectation_alignment", ""
+            ),
+            "onboarding_priority": hiring_insights.get("onboarding_priority", ""),
+            "tb_interview_focus_areas": hiring_insights.get("tb_interview_focus_areas") or hiring_insights.get("interview_foucs_areas") or [],
+            "processing_time": metadata.get("processing_time", 0.0),
+            "processed_at": processed_at,
+            "file_size": metadata.get("file_size", 0),
+            "word_count": metadata.get("word_count", 0),
+            "success": metadata.get("success", False),
+            "error_message": result.get("error", None),
+        }
+
+        if resume_analysis:
+            for key, value in mapped_values.items():
+                setattr(resume_analysis, key, value)
             resume_analysis.success = analysis_success
-            resume_analysis.job_id = job_id
+            resume_analysis.job_id = job_application.job_id
             resume_analysis.updated_at = get_ist_now()
             logger.info(f"Resume analysis updated for application ID {application_id}")
         else:
             resume_analysis = models.ResumeAnalysis(
                 application_id=job_application.id,
-                job_id=job_application.job_id,
-                candidate_name=result.get("candidate_name", "No Name Found"),
-                email=result.get("email", "No Email Found"),
-                contact_number=result.get("contact_number"),
-                final_score=result.get("scores", dict()).get("final_score", 0.0),
-                skills_match=result.get("scores", dict()).get("skills_match", 0.0),
-                experience_score=result.get("scores", dict()).get(
-                    "experience_score", 0.0
-                ),
-                education_score=result.get("scores", dict()).get(
-                    "education_score", 0.0
-                ),
-                keywords_match=result.get("scores", dict()).get("keywords_match", 0.0),
-                overall_fit=result.get("scores", dict()).get("overall_fit", 0.0),
-                growth_potential=result.get("scores", dict()).get(
-                    "growth_potential", 0.0
-                ),
-                recommendation_decision=result.get("recommendation", dict()).get(
-                    "decision", ""
-                ),
-                recommendation_reason=result.get("recommendation", dict()).get(
-                    "reason", ""
-                ),
-                recommendation_confidence=result.get("recommendation", dict()).get(
-                    "confidence", ""
-                ),
-                skill_match_percentage=result.get("skills_analysis", dict()).get(
-                    "skill_match_percentage", 0.0
-                ),
-                tb_matching_skills=result.get("skills_analysis", dict()).get(
-                    "tb_matching_skills", []
-                ),
-                tb_missing_skills=result.get("skills_analysis", dict()).get(
-                    "tb_missing_skills", []
-                ),
-                tb_matching_experience=result.get("experience_analysis", dict()).get(
-                    "tb_matching_experience", []
-                ),
-                tb_experience_gaps=result.get("experience_analysis", dict()).get(
-                    "tb_experience_gaps", []
-                ),
-                experience_level=result.get("experience_analysis", dict()).get(
-                    "experience_level", ""
-                ),
-                tb_education_highlights=result.get("education_analysis", dict()).get(
-                    "tb_education_highlights", []
-                ),
-                education_level=result.get("education_analysis", dict()).get(
-                    "education_level", ""
-                ),
-                is_fresher=result.get("job_analysis", dict()).get("fresher", None),
-                first_job_start_year=result.get("job_analysis", dict()).get(
-                    "first_job_start_year", 0
-                ),
-                last_job_end_year=result.get("job_analysis", dict()).get(
-                    "last_job_end_year", 0
-                ),
-                total_jobs_count=result.get("job_analysis", dict()).get(
-                    "total_jobs_count", 0
-                ),
-                average_job_change=result.get("job_analysis", dict()).get(
-                    "average_job_change", None
-                ),
-                tb_strengths=result.get("assessment", dict()).get("tb_strengths", []),
-                tb_weaknesses=result.get("assessment", dict()).get("tb_weaknesses", []),
-                tb_red_flags=result.get("assessment", dict()).get("tb_red_flags", []),
-                tb_cultural_fit_indicators=result.get("assessment", dict()).get(
-                    "cultural_fit_indications"
-                ),
-                salary_expectation_alignment=result.get("hiring_insights", dict()).get(
-                    "salary_expectation_alignment", ""
-                ),
-                onboarding_priority=result.get("hiring_insights", dict()).get(
-                    "onboarding_priority", ""
-                ),
-                tb_interview_focus_areas=result.get("hiring_insights", dict()).get(
-                    "interview_foucs_areas", []
-                ),
-                processing_time=result.get("metadata", dict()).get(
-                    "processing_time", 0.0
-                ),
-                processed_at=result.get("metadata", dict()).get("processed_at", None),
-                file_path=extract_relative_path(
-                    result.get("metadata", dict()).get("file_path", "")
-                ),
-                file_size=result.get("metadata", dict()).get("file_size", 0),
-                word_count=result.get("metadata", dict()).get("word_count", 0),
-                success=result.get("metadata", dict()).get("success", False),
-                error_message=result.get("error", None),
+                **mapped_values
             )
             logger.info(f"Resume analysis created for application ID {application_id}")
         # Always derive status from the final score
@@ -465,6 +475,15 @@ def create_or_update_resume_analysis_update_db(
         # Extract details with safe fallback defaults from nested analysis dictionary
         analysis = result.get("analysis", {})
         
+        # Query job_details from tb_create_job_details
+        job_details = None
+        if job_application.job_id:
+            job_details = session.exec(
+                select(models.CreateJobDetails).where(
+                    models.CreateJobDetails.job_id == job_application.job_id
+                )
+            ).first()
+
         def clean_val(val):
             if val is None:
                 return "Not Mentioned"
@@ -475,13 +494,32 @@ def create_or_update_resume_analysis_update_db(
                 return s
             return str(val)
         
+        app_cand_name = f"{(job_application.first_name or '').strip()} {(job_application.last_name or '').strip()}".strip()
         name = clean_val(result.get("name") or analysis.get("name") or result.get("candidate_name") or analysis.get("candidate_name"))
+        if name == "Not Mentioned" and app_cand_name:
+            name = app_cand_name
+
         designation = clean_val(result.get("designation") or analysis.get("designation") or result.get("current_role") or analysis.get("current_role"))
+        if designation == "Not Mentioned" and job_details and job_details.job_title:
+            designation = job_details.job_title
+
         current_location = clean_val(result.get("current_location") or analysis.get("current_location") or result.get("location") or analysis.get("location"))
+        if current_location == "Not Mentioned" and job_details and job_details.location:
+            current_location = job_details.location
+
         total_experience = clean_val(result.get("total_experience") or analysis.get("total_experience") or result.get("relevant_experience_years") or analysis.get("relevant_experience_years"))
+        if total_experience == "Not Mentioned" and job_details and job_details.min_experience is not None:
+            total_experience = f"{job_details.min_experience} Years" if job_details.min_experience > 0 else "Fresher"
+
         email = clean_val(result.get("email") or analysis.get("email"))
+        if email == "Not Mentioned" and job_application.email:
+            email = job_application.email
+
         notice_period = clean_val(result.get("notice_period") or analysis.get("notice_period"))
         phone_no = clean_val(result.get("phone_no") or analysis.get("phone_no") or result.get("contact_number") or analysis.get("contact_number") or result.get("phone_fields") or result.get("phone") or analysis.get("phone"))
+        if phone_no == "Not Mentioned" and job_application.ph_no:
+            phone_no = job_application.ph_no
+
         current_company = clean_val(result.get("current_company") or analysis.get("current_company"))
         
         personal_date_of_birth = clean_val(result.get("personal_date_of_birth") or analysis.get("personal_date_of_birth"))
