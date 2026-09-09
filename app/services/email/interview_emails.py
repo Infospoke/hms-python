@@ -32,14 +32,15 @@ def send_interview_invitation(
     )
     try:
 
-        background_tasks.add_task(
-            send_email,
-            subject=f"Action Required: Schedule your interview for {job_title}",
-            template_name="emails/interview_invite.html",
-            context={"candidate_name": candidate_name, "role": job_title, "link": link},
-            recipients=[candidate_email],
-        )
-        logger.info("AI Interview Invitation E-mail Sent (Schedule Link)")
+        # background_tasks.add_task(
+        #     send_email,
+        #     subject=f"Action Required: Schedule your interview for {job_title}",
+        #     template_name="emails/interview_invite.html",
+        #     context={"candidate_name": candidate_name, "role": job_title, "link": link},
+        #     recipients=[candidate_email],
+        # )
+        # logger.info("AI Interview Invitation E-mail Sent (Schedule Link)")
+        pass
     except Exception as err:
         raise Exception(err)
 
