@@ -2,6 +2,7 @@ import io
 import math
 import datetime
 import os
+from app.utils import timezone_utils
 
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
@@ -31,7 +32,7 @@ if os.path.exists("static/fonts/Roboto-Regular.ttf"):
 
 def format_date(dt_obj):
     if not dt_obj:
-        return datetime.datetime.now().strftime("%d %b %Y | %I:%M %p")
+        return timezone_utils.get_ist_now().strftime("%d %b %Y | %I:%M %p")
     if isinstance(dt_obj, str):
         if dt_obj == "N/A":
             return "-"

@@ -9,6 +9,11 @@ def get_ist_now() -> datetime:
     return datetime.now(IST).replace(tzinfo=None)
 
 
+def get_ist_now_aware() -> datetime:
+    """Same as get_ist_now() but keeps tzinfo, so Pydantic serializes it with the +05:30 offset directly."""
+    return datetime.now(IST)
+
+
 def convert_to_ist(dt: datetime) -> datetime:
     if dt is None:
         return None

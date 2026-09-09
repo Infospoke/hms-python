@@ -36,6 +36,7 @@ from app.api import deps
 from app.schemas import OfferLetterRequest, RegenerateOfferLetterRequest
 from app.services.offer_service import get_offer_details
 from app.services.reports.offer_letter_report import generate_offer_letter_pdf
+from app.utils import timezone_utils
 
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 def build_offer_letter_filename(candidate_id=None, offer_id=None, candidate_name=None, base_pdf_name="Offer_Letter.pdf") -> str:
-    from datetime import datetime
-    year_str = str(datetime.now().year)
+    year_str = str(timezone_utils.get_ist_now().year)
 
     cid_str = str(candidate_id).strip() if candidate_id is not None else ""
     if cid_str:
@@ -432,7 +432,7 @@ def regenerate_offer_letter(
                 offer_detail.offer_status = status_str
                 offer_detail.approve = request.approve
                 offer_detail.reject = not request.approve
-                offer_detail.responded_at = datetime.now()
+                offer_detail.responded_at = timezone_utils.get_ist_now()
                 offer_detail.total_ctc = int(request.total_ctc)
                 db.add(offer_detail)
             else:
@@ -444,7 +444,7 @@ def regenerate_offer_letter(
                     reject=not request.approve,
                     probation_period=None,
                     total_ctc=int(request.total_ctc),
-                    responded_at=datetime.now()
+                    responded_at=timezone_utils.get_ist_now()
                 )
                 db.add(new_offer_detail)
 
@@ -498,7 +498,7 @@ def regenerate_offer_letter(
         from app.services.offer_service import generate_reference_id
         offer_data = {
             "reference_id": generate_reference_id(request.application_id),
-            "date": datetime.now().strftime("%d-%m-%Y"),
+            "date": timezone_utils.get_ist_now().strftime("%d-%m-%Y"),
             "candidate_name": candidate_name,
             "job_title": getattr(candidate, "current_stage", "Employee") if candidate else "Employee",
             "reporting_manager": "Manager",
@@ -688,7 +688,7 @@ def approved_offer(
 
         effective_sig_text = signature_type.strip() if (signature_type and str(signature_type).strip()) else None
 
-        approved_date = datetime.now().strftime("%d-%m-%Y")
+        approved_date = timezone_utils.get_ist_now().strftime("%d-%m-%Y")
         if signature_b64 or effective_sig_text:
             pdf_bytes = add_signature_to_pdf(
                 original_pdf_bytes=pdf_bytes,
@@ -790,13 +790,13 @@ def process_offer_action(
             status_str = "Accepted"
             if offer_detail:
                 offer_detail.offer_status = status_str
-                offer_detail.responded_at = datetime.now()
+                offer_detail.responded_at = timezone_utils.get_ist_now()
                 session.add(offer_detail)
             else:
                 new_offer_detail = models.OfferDetails(
                     job_application_id=app_id_int,
                     offer_status=status_str,
-                    responded_at=datetime.now()
+                    responded_at=timezone_utils.get_ist_now()
                 )
                 session.add(new_offer_detail)
 

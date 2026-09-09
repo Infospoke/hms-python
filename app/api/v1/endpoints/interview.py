@@ -1495,7 +1495,7 @@ def finalize_questions(
             message="Questions finalized and saved successfully",
             application_id=data.application_id,
             questions_count=len(finalized_questions),
-            finalized_at=timezone_utils.get_ist_now(),
+            finalized_at=timezone_utils.get_ist_now_aware(),
         )
 
     except HTTPException:

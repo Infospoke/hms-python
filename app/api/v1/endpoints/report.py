@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 from datetime import datetime
 from app.db.session import get_session
+from app.utils import timezone_utils
 from app.models import (
     CreateJobDetails,
     JobDescription,
@@ -392,7 +393,7 @@ async def generate_applicants_report(
             location=location or "Unknown Location",
             employment_type=employment_type or "Full-time",
             applicants=applicants_data,
-            report_date=datetime.now().strftime("%d %b %Y | %I:%M %p"),
+            report_date=timezone_utils.get_ist_now().strftime("%d %b %Y | %I:%M %p"),
             requisition_id=requisition_id,
             date_posted=date_posted,
             # Pass raw database records for 100% accurate charts
@@ -743,7 +744,7 @@ async def generate_service_requisition_report_endpoint(
             "section_3": section_3,
             "section_4": section_4,
             "section_5": section_5,
-            "generated_on": datetime.now().isoformat(),
+            "generated_on": timezone_utils.get_ist_now().isoformat(),
         }
 
         pdf_buffer = generate_service_requisition_report(report_data)

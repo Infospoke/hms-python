@@ -4,6 +4,7 @@ import os
 import math
 import datetime
 from app.models import ProctoringEventType
+from app.utils import timezone_utils
 
 import matplotlib
 
@@ -926,7 +927,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         canvas.drawString(
             30,
             10,
-            f"This report was automatically generated on {datetime.datetime.now().strftime('%d %b %Y | %I:%M %p')}",
+            f"This report was automatically generated on {timezone_utils.get_ist_now().strftime('%d %b %Y | %I:%M %p')}",
         )
         canvas.drawRightString(A4[0] - 30, 10, f"Page {doc.page}")
         canvas.restoreState()

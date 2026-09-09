@@ -1,9 +1,10 @@
 from datetime import datetime
 from sqlmodel import Session, select
 from app.models import JobApplications, CreateJobDetails, User, BudgetCompensation, OfferDetails
+from app.utils import timezone_utils
 
 def generate_reference_id(application_id: int) -> str:
-    return f"INF/{datetime.now().year}/{application_id:06d}"
+    return f"INF/{timezone_utils.get_ist_now().year}/{application_id:06d}"
 
 def get_offer_details(db: Session, request, force_budget_ctc: bool = False):
     # Candidate Name
@@ -107,7 +108,7 @@ def get_offer_details(db: Session, request, force_budget_ctc: bool = False):
 
     return {
         "reference_id": generate_reference_id(request.application_id),
-        "date": datetime.now().strftime("%d-%m-%Y"),
+        "date": timezone_utils.get_ist_now().strftime("%d-%m-%Y"),
         "candidate_name": f"{candidate.first_name or ''} {candidate.last_name or ''}".strip(),
         "joining_date": joining_date_str,
         "job_title": job.job_title if job else "Employee",

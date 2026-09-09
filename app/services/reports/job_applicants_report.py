@@ -4,6 +4,7 @@ import os
 import datetime
 from datetime import datetime as dt_now
 from collections import Counter
+from app.utils import timezone_utils
 import matplotlib
 
 matplotlib.use("Agg")
@@ -365,7 +366,7 @@ def prepare_report_data(
     exp_colors = ["#E67E22", "#2ECC71", "#3498DB"]
 
     # 2. Applications Over Time
-    now = datetime.datetime.now()
+    now = timezone_utils.get_ist_now()
     first_day = now.replace(day=1)
     if now.month == 12:
         last_day = now.replace(year=now.year + 1, month=1, day=1) - datetime.timedelta(
@@ -515,7 +516,7 @@ def prepare_report_data(
         "ai_interviews": ai_interviews,
         "applicants": applicants,
         "charts": charts,
-        "report_date": report_date or datetime.datetime.now().strftime("%d %b %Y"),
+        "report_date": report_date or timezone_utils.get_ist_now().strftime("%d %b %Y"),
     }
 
 
