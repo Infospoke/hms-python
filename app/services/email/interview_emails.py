@@ -179,18 +179,19 @@ def send_interview_result_email(
     )
 
     try:
-        background_tasks.add_task(
-            send_email,
-            subject=subject,
-            template_name=template,
-            context={
-                "candidate_name": candidate_name,
-                "role": job_title,
-                "score": interview_analysis.total_score,
-            },
-            recipients=[candidate_email],
-        )
-        logger.info("Interview result email sent")
+        # background_tasks.add_task(
+        #     send_email,
+        #     subject=subject,
+        #     template_name=template,
+        #     context={
+        #         "candidate_name": candidate_name,
+        #         "role": job_title,
+        #         "score": interview_analysis.total_score,
+        #     },
+        #     recipients=[candidate_email],
+        # )
+        # logger.info("Interview result email sent")
+        pass
 
     except Exception as err:
         logger.error(f"Email sending failed: {err}")
@@ -212,19 +213,20 @@ def send_resume_result_email(
     subject = f"Application Update for {job_title}"
 
     try:
-        background_tasks.add_task(
-            send_email,
-            subject=subject,
-            template_name=template,
-            context={
-                "candidate_name": candidate_name,
-                "role": job_title,
-                "score": score,
-            },
-            recipients=[candidate_email],
-            attachments=[]
-        )
-        logger.info("Resume result email scheduled")
+        # background_tasks.add_task(
+        #     send_email,
+        #     subject=subject,
+        #     template_name=template,
+        #     context={
+        #         "candidate_name": candidate_name,
+        #         "role": job_title,
+        #         "score": score,
+        #     },
+        #     recipients=[candidate_email],
+        #     attachments=[]
+        # )
+        # logger.info("Resume result email scheduled")
+        pass
 
     except Exception as err:
         logger.error(f"Resume email failed: {err}")
