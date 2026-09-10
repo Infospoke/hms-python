@@ -790,7 +790,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
 
         story.append(
             Paragraph(
-                "4.1 Questions Asked by AI, Candidate Response's & AI Evaluation",
+                "4.1 Nexus AI Powered Questions, Candidate Response's & Nexus AI Assessment",
                 subbanner_style,
             )
         )
