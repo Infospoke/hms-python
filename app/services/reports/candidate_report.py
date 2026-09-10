@@ -858,7 +858,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
                 )
             )
             ts = (
-                p.timestamp.strftime("%H:%M:%S")
+                p.timestamp.strftime("%I:%M:%S %p")
                 if isinstance(p.timestamp, datetime.datetime)
                 else "N/A"
             )
