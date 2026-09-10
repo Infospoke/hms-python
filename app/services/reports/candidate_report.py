@@ -2,9 +2,11 @@ import io
 import json
 import os
 import math
+import base64
 import datetime
 from app.models import ProctoringEventType
 from app.utils import timezone_utils
+from app.services import minio_helper
 
 import matplotlib
 
@@ -89,6 +91,19 @@ def list_to_bullets(items, style):
         [f"&bull; {str(i).strip()}" for i in items if str(i).strip()]
     )
     return Paragraph(bullets, style)
+
+
+def get_violation_image_flowable(image_path, td_center, width=0.9 * inch, height=0.7 * inch):
+    if not image_path:
+        return Paragraph("N/A", td_center)
+    try:
+        data_uri = minio_helper.get_image_base64(image_path)
+        if not data_uri or "," not in data_uri:
+            return Paragraph("N/A", td_center)
+        img_bytes = base64.b64decode(data_uri.split(",", 1)[1])
+        return Image(io.BytesIO(img_bytes), width=width, height=height)
+    except Exception:
+        return Paragraph("N/A", td_center)
 
 
 def get_severity_color(proc):
@@ -220,6 +235,15 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         leading=13,
     )
 
+    powered_by_style = ParagraphStyle(
+        "PoweredBy",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=5.5,
+        textColor=colors.HexColor("#6b7280"),
+        leading=9,
+    )
+
     # 1. Left column: Logo + NEXUS HMS text
     try:
         from svglib.svglib import svg2rlg
@@ -237,9 +261,13 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             "<font size=21 color='#0051cf'><b>NEXUS</b></font> <font size=17 color='#6b7280'>HMS</font>",
             logo_style,
         ),
-        Spacer(1, 2),
+        Spacer(1, 1),
         Paragraph("Smarter Hiring. Better Future.", subtext_style),
+        Spacer(1, 0.5),
+        Paragraph("@Powered By Infospoke Integrated Solutions LLP", powered_by_style),
     ]
+
+
 
     if logo_drawing:
         logo_table = Table(
@@ -832,6 +860,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
                 Paragraph("<b>Description</b>", th_left),
                 Paragraph("<b>Severity</b>", th_center),
                 Paragraph("<b>Timestamp</b>", th_center),
+                Paragraph("<b>Evidence</b>", th_center),
             ]
         ]
 
@@ -875,24 +904,29 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             except Exception:
                 p_details = str(p.details)
 
+            evidence_flowable = get_violation_image_flowable(
+                getattr(p, "image_path", None), td_center
+            )
+
             row = [
                 Paragraph(str(v_count), td_style),
                 Paragraph(p.event_type, td_style),
                 Paragraph(p_details or "Detected event", td_style),
                 Paragraph(sev_badge, td_center),
                 Paragraph(ts, td_center),
+                evidence_flowable,
             ]
             v_table_data.append(row)
             v_count += 1
 
         if not procs:
             v_table_data.append(
-                [Paragraph("No violations recorded.", td_center), "", "", "", ""]
+                [Paragraph("No violations recorded.", td_center), "", "", "", "", ""]
             )
 
         t_v = Table(
             v_table_data,
-            colWidths=[0.4 * inch, 1.8 * inch, 3.2 * inch, 0.8 * inch, 1.0 * inch],
+            colWidths=[0.35 * inch, 1.5 * inch, 2.55 * inch, 0.7 * inch, 0.9 * inch, 1.0 * inch],
             repeatRows=1,
         )
         t_v.setStyle(
@@ -906,7 +940,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             )
         )
         if not procs:
-            t_v.setStyle(TableStyle([("SPAN", (0, 1), (4, 1))]))
+            t_v.setStyle(TableStyle([("SPAN", (0, 1), (5, 1))]))
         story.append(t_v)
         story.append(Spacer(1, 4))
 
