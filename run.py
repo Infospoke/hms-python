@@ -44,4 +44,4 @@ if __name__ == "__main__":
     atexit.register(cleanup)
 
     logging.info("Starting FastAPI server with HTTP workers...")
-    uvicorn.run("app.main:app", host="0.0.0.0", port=5002, workers=1, reload=False)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=5002, workers=1, reload=True)

@@ -32,6 +32,10 @@ def main():
     ProctoringEngine()
     logger.info("Proctoring models preloaded successfully.")
 
+    logger.info("Warming up analyze_image_worker thread pool...")
+    analyze_image_worker.warm_up_workers()
+    logger.info("analyze_image_worker thread pool warmed up.")
+
     image_thread = threading.Thread(
         target=analyze_image_worker.run_worker,
         daemon=True,

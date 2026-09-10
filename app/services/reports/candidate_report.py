@@ -1,3 +1,4 @@
+import re
 import io
 import json
 import os
@@ -37,6 +38,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.graphics.shapes import Drawing, Circle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
@@ -91,6 +93,13 @@ def list_to_bullets(items, style):
         [f"&bull; {str(i).strip()}" for i in items if str(i).strip()]
     )
     return Paragraph(bullets, style)
+
+
+def get_status_circle(color, diameter=10):
+    d = Drawing(diameter, diameter)
+    d.add(Circle(diameter / 2.5, diameter / 2.5, diameter / 2.5, fillColor=color, strokeColor=None))
+    d.hAlign = "LEFT"
+    return d
 
 
 def get_violation_image_flowable(image_path, td_center, width=0.9 * inch, height=0.7 * inch):
@@ -258,7 +267,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
 
     logo_text = [
         Paragraph(
-            "<font size=21 color='#0051cf'><b>NEXUS</b></font> <font size=17 color='#6b7280'>HMS</font>",
+            "<font size=21 color='#0051cf'><b>NEXUS</b></font> <font size=17 color='#6b7280'>AI</font>",
             logo_style,
         ),
         Spacer(1, 1),
@@ -289,7 +298,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         comp_title = logo_text
 
     # 2. Right column: Report generated date and title
-    report_title = Paragraph("CANDIDATE REPORT", title_style)
+    report_title = Paragraph("Candidate Evaluation Summary", title_style)
 
     header_table = Table(
         [[comp_title, [report_title]]], colWidths=[3.2 * inch, 4.3 * inch]
@@ -337,6 +346,8 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         c_email = j_app.email or c_email
         c_phone = j_app.ph_no or c_phone
 
+    c_email = re.sub(r'([^\s@]{4})[^\s@]*@[^\s]+', lambda m: m.group(1) + '*' * (len(m.group(0)) - 4), c_email)
+    c_phone = c_phone[:4] + '*' * (len(c_phone) - 4)
     c_date = format_date(j_app.created_date if j_app else None)
 
     c_city_country = "N/A"
@@ -484,7 +495,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         [
             Paragraph("<b>Application Submitted</b>", td_center),
             "",
-            Paragraph("<b>Resume Screening</b>", td_center),
+            Paragraph("<b>Resume AI Screening</b>", td_center),
             "",
             Paragraph("<b>AI Interview</b>", td_center),
             "",
@@ -591,7 +602,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         ],
         [
             Paragraph("<b>Screened By</b>", label_style),
-            Paragraph("AI Resume Screening Engine", td_style),
+            Paragraph("Nexus AI Screening Engine", td_style),
         ],
         [
             Paragraph("<b>Overall Match Score</b>", label_style),
@@ -648,7 +659,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
     right_table_data = [
         [
             Paragraph(
-                "<b>Resume Highlights</b> <font color='#6B7280'>(Extracted by AI)</font>",
+                "<b>Resume Highlights</b>",
                 label_style,
             )
         ],
@@ -708,15 +719,24 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             i_diff = "Easy"
         elif raw_exp == "Experienced":
             i_diff = "Hard"
-        i_score = (
-            f"{i_anal.total_score}%"
+        i_score_value = (
+            safe_float(i_anal.total_score)
             if (i_anal and i_anal.total_score is not None)
-            else "N/A"
+            else None
         )
-        i_model = consts.GEMINI_MODEL_FOR_AI_INTERVIEWER
+        if i_score_value is None:
+            i_score_circle_color = TEXT_SECONDARY
+        elif i_score_value <= 30:
+            i_score_circle_color = RED_DANGER
+        elif i_score_value < 50:
+            i_score_circle_color = YELLOW_WARN
+        else:
+            i_score_circle_color = GREEN_SUCCESS
+        i_score_circle_color = GREEN_SUCCESS
+        i_model = "Nexus AI"
         i_mode = "Video + Audio"
         i_rec = getattr(i_anal, "recommendation", "N/A") or "N/A"
-        if isinstance(i_rec, str):
+        if isinstance(i_rec, str) and i_rec is not "N/A":
             i_rec = i_rec.capitalize().strip()
         i_rec_color = TEXT_PRIMARY.hexval()
         if i_rec and isinstance(i_rec, str):
@@ -732,7 +752,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             [
                 Paragraph("<b>AI Interview Date & Time</b>", label_style),
                 Paragraph(i_date, td_style),
-                Paragraph("<b>AI Interviewer (LLM Model)</b>", label_style),
+                Paragraph("<b>AI Interviewer</b>", label_style),
                 Paragraph(i_model, td_style),
             ],
             [
@@ -742,8 +762,8 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
                 Paragraph(i_mode, td_style),
             ],
             [
-                Paragraph("<b>Overall Performance Score</b>", label_style),
-                Paragraph(f"<b>{i_score}</b>", td_style),
+                Paragraph("<b>Overall Performance</b>", label_style),
+                get_status_circle(i_score_circle_color),
                 Paragraph("<b>Recommendation</b>", label_style),
                 Paragraph(
                     f"<font color='{i_rec_color}'><b>{i_rec}</b></font>", td_style
@@ -770,7 +790,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
 
         story.append(
             Paragraph(
-                "4.1 Questions Asked by AI, Candidate Replies & AI Evaluation",
+                "4.1 Questions Asked by AI, Candidate Response's & AI Evaluation",
                 subbanner_style,
             )
         )
@@ -778,9 +798,9 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         qna_table_data = [
             [
                 Paragraph("<b>No.</b>", th_center),
-                Paragraph("<b>Question Asked by AI (LLM)</b>", th_center),
-                Paragraph("<b>Candidate Reply (Captured)</b>", th_center),
-                Paragraph("<b>AI Evaluation</b>", th_center),
+                Paragraph("<b>Nexus AI Powered Questions</b>", th_center),
+                Paragraph("<b>Candidate Response's</b>", th_center),
+                Paragraph("<b>Nexus AI Assessment</b>", th_center),
             ]
         ]
 
@@ -926,7 +946,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
 
         t_v = Table(
             v_table_data,
-            colWidths=[0.35 * inch, 1.5 * inch, 2.55 * inch, 0.7 * inch, 0.9 * inch, 1.0 * inch],
+            colWidths=[0.55 * inch, 1.5 * inch, 2.55 * inch, 0.7 * inch, 0.9 * inch, 1.0 * inch],
             repeatRows=1,
         )
         t_v.setStyle(
@@ -959,11 +979,37 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         canvas.setFillColor(colors.white)
         canvas.setFont("Roboto", 9)
         canvas.drawString(
-            30,
+            27,
             10,
-            f"This report was automatically generated on {timezone_utils.get_ist_now().strftime('%d %b %Y | %I:%M %p')}",
+            f"This is system generated report | {timezone_utils.get_ist_now().strftime('%d-%m-%Y | %I:%M %p')} | © {timezone_utils.get_ist_now().year} ",
         )
         canvas.drawRightString(A4[0] - 30, 10, f"Page {doc.page}")
+        
+        link_text = f"infospoke.ai"
+        link_font_size = 9
+        link_center_x = A4[0] / 1.9
+        link_y = 10
+        canvas.setFont("Roboto", link_font_size)
+        canvas.drawCentredString(link_center_x, link_y, link_text)
+        text_width = canvas.stringWidth(link_text, "Roboto", link_font_size)
+        # underline_y = link_y - 1.5
+        # canvas.line(
+        #     link_center_x - text_width / 2,
+        #     underline_y,
+        #     link_center_x + text_width / 2,
+        #     underline_y,
+        # )
+        canvas.linkURL(
+            "https://infospoke.ai",
+            (
+                link_center_x - text_width / 2,
+                link_y - 2,
+                link_center_x + text_width / 2,
+                link_y + 10,
+            ),
+            relative=0,
+        )
+
         canvas.restoreState()
 
     doc.build(story, onFirstPage=add_page_number, onLaterPages=add_page_number)
