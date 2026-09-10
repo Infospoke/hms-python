@@ -423,7 +423,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
 
     t1_date = c_date
     t2_date = format_date(r_anal.processed_at) if r_anal else not_completed_msg
-    t3_date = format_date(i_sess.created_date) if i_sess else not_completed_msg
+    t3_date = format_date(i_anal.interview_started_datetime) if i_anal else not_completed_msg
     t4_date = not_completed_msg
 
     if (
@@ -432,8 +432,8 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         and i_anal.status.lower() == "completed"
     ):
         t4_date = format_date(
-            getattr(i_anal, "updated_date", None)
-            or (getattr(i_sess, "created_date", None) if i_sess else None)
+            getattr(i_anal, "interview_analysis_date", None)
+            or not_completed_msg
         )
 
     def get_timeline_icon(path, is_arrow=False):
