@@ -337,11 +337,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
     c_dept = "N/A"
     c_loc = j_meta.job_location if j_meta else "N/A"
 
-    if r_anal:
-        c_name = r_anal.candidate_name or c_name
-        c_email = r_anal.email or c_email
-        c_phone = r_anal.contact_number or c_phone
-    elif j_app:
+    if j_app:
         c_name = f"{j_app.first_name} {j_app.last_name or ''}".strip()
         c_email = j_app.email or c_email
         c_phone = j_app.ph_no or c_phone
