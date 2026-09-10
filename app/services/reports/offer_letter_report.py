@@ -52,7 +52,14 @@ def add_header(canvas, doc):
     canvas.setFont(font_bold, 24)
     canvas.setFillColor(colors.HexColor("#1A40BA")) # Bold Blue matching the image
     canvas.drawRightString(A4[0] - inch, A4[1] - inch, "NEXUS")
-    
+
+    # Powered by text
+    canvas.setFont(font_regular, 6)
+    canvas.setFillColor(colors.HexColor("#6b7280"))
+    canvas.drawRightString(
+        A4[0] - inch, A4[1] - inch - 12, "@Powered By Infospoke Integrated Solutions LLP"
+    )
+
     # Gray right angle graphic (optional flair)
     canvas.setStrokeColor(colors.lightgrey)
     canvas.setLineWidth(1)

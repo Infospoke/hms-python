@@ -614,6 +614,15 @@ def generate_applicants_pdf(
         leading=13,
     )
 
+    powered_by_style = ParagraphStyle(
+        "PoweredBy",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=5.5,
+        textColor=colors.HexColor("#6b7280"),
+        leading=9,
+    )
+
     # 1. Left column: Logo + NEXUS HMS text
     try:
         from svglib.svglib import svg2rlg
@@ -631,8 +640,10 @@ def generate_applicants_pdf(
             "<font size=21 color='#0051cf'><b>NEXUS</b></font> <font size=17 color='#6b7280'>HMS</font>",
             logo_style,
         ),
-        Spacer(1, 2),
+        Spacer(1, 1),
         Paragraph("Smarter Hiring. Better Future.", subtext_style),
+        Spacer(1, 0.5),
+        Paragraph("@Powered By Infospoke Integrated Solutions LLP", powered_by_style),
     ]
 
     if logo_drawing:
