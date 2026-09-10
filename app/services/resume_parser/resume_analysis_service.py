@@ -176,7 +176,7 @@ class ResumeAnalysisService:
             },
             "metadata": {
                 "processing_time": 2.5,
-                "processed_at": timezone_utils.format_datetime_for_api(timezone_utils.get_ist_now()),
+                "processed_at": application.created_date or timezone_utils.get_ist_now(),
                 "file_path": file_path,
                 "file_size": 102400,
                 "word_count": 500,
