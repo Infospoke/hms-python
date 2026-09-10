@@ -95,15 +95,15 @@ def list_to_bullets(items, style):
 
 def get_violation_image_flowable(image_path, td_center, width=0.9 * inch, height=0.7 * inch):
     if not image_path:
-        return Paragraph("N/A", td_center)
+        return Paragraph("No Evidence", td_center)
     try:
         data_uri = minio_helper.get_image_base64(image_path)
         if not data_uri or "," not in data_uri:
-            return Paragraph("N/A", td_center)
+            return Paragraph("No Evidence", td_center)
         img_bytes = base64.b64decode(data_uri.split(",", 1)[1])
         return Image(io.BytesIO(img_bytes), width=width, height=height)
     except Exception:
-        return Paragraph("N/A", td_center)
+        return Paragraph("No Evidence", td_center)
 
 
 def get_severity_color(proc):
