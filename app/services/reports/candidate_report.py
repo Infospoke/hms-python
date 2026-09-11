@@ -445,7 +445,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
 
     story.append(
         Table(
-            [[Paragraph("2. Hiring Stages Timeline", banner_style)]],
+            [[Paragraph("2. Hiring Workflow", banner_style)]],
             colWidths=[7.2 * inch],
             style=[
                 ("BACKGROUND", (0, 0), (-1, -1), DARK_BLUE),
@@ -728,7 +728,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             i_score_circle_color = YELLOW_WARN
         else:
             i_score_circle_color = GREEN_SUCCESS
-        i_score_circle_color = GREEN_SUCCESS
+            
         i_model = "Nexus AI"
         i_mode = "Video + Audio"
         i_rec = getattr(i_anal, "recommendation", "N/A") or "N/A"
@@ -813,7 +813,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             except:
                 pass
 
-            styled_eval = f"{eval_text}<br/><br/><font color='{GREEN_SUCCESS.hexval()}'><b>Score: {score_val}</b></font>"
+            styled_eval = f"{eval_text}"
 
             row = [
                 Paragraph(str(qna_count), td_center),
