@@ -752,7 +752,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
                 Paragraph(i_model, td_style),
             ],
             [
-                Paragraph("<b>Interview Difficulty</b>", label_style),
+                Paragraph("<b>Assessment Complexity</b>", label_style),
                 Paragraph(i_diff, td_style),
                 Paragraph("<b>Interview Mode</b>", label_style),
                 Paragraph(i_mode, td_style),
