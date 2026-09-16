@@ -31,6 +31,7 @@ class ProctoringEventType(str, Enum):
     forbidden_key_attempt = "FORBIDDEN_KEY_ATTEMPT"
     clipboard_violation = "Clipboard Violation"
     default = "No Violation"
+    candidate_picture = "CANDIDATE_PICTURE"
 
 
 # --- Model Definitions ---
