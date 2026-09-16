@@ -95,7 +95,10 @@ def _save_proctoring_violation(
 ) -> str:
     timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
     clean_alert_type = alert_type.replace(" ", "_").lower()
-    image_filename = f"violation_{clean_alert_type}_{timestamp_str}.jpg"
+    if clean_alert_type in ["candidate_picture", "candidate_photo", "candidate picture"]:
+        image_filename = f"candidate_picture_{timestamp_str}.jpg"
+    else:
+        image_filename = f"violation_{clean_alert_type}_{timestamp_str}.jpg"
     s3_object_name = f"ai-interviews/proctoring/{interview_session_id}/{image_filename}"
 
     _, buffer = cv2.imencode(".jpg", image)
@@ -216,7 +219,66 @@ def run_worker() -> None:
             try:
                 body_str = msg.value().decode("utf-8")
                 body = json.loads(body_str)
-                executor.submit(_safe_process_message, body)
+
+                interview_session_id = body.get("interview_session_id")
+                with Session(engine) as session:
+                    interview_analysis = session.exec(
+                        select(models.InterviewAnalysis).where(
+                            models.InterviewAnalysis.interview_session_id
+                            == interview_session_id
+                        )
+                    ).first()
+
+                    candidate_pic_log = None
+                    if interview_analysis:
+                        candidate_pic_log = session.exec(
+                            select(models.ProctoringLogs).where(
+                                models.ProctoringLogs.interview_analysis_id
+                                == interview_analysis.id,
+                                models.ProctoringLogs.event_type.in_(
+                                    [
+                                        models.ProctoringEventType.candidate_picture,
+                                        "CANDIDATE_PICTURE",
+                                        "candidate_picture",
+                                        "Candidate Picture",
+                                    ]
+                                ),
+                                models.ProctoringLogs.is_deleted == False,
+                            )
+                        ).first()
+
+                    if not candidate_pic_log and interview_analysis:
+                        try:
+                            image_base64 = body.get("image_base64", "")
+                            if image_base64.startswith("data:image"):
+                                _, image_base64 = image_base64.split(",", 1)
+                            image_data = base64.b64decode(image_base64)
+                            image_array = np.frombuffer(image_data, np.uint8)
+                            image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+                            if image is not None:
+                                image_path = _save_proctoring_violation(
+                                    interview_session_id, "candidate_picture", image
+                                )
+                                proctoring_log = models.ProctoringLogs(
+                                    interview_analysis_id=interview_analysis.id,
+                                    event_type=models.ProctoringEventType.candidate_picture,
+                                    details=json_dumps(["Candidate Picture"]),
+                                    image_path=image_path,
+                                    tb_severity="low severity",
+                                )
+                                session.flush()
+                                session.add(proctoring_log)
+                                session.commit()
+                                logger.info(
+                                    f"Worker: candidate picture placed for session {interview_session_id}"
+                                )
+                        except Exception as err:
+                            logger.error(
+                                f"Worker: error placing candidate picture: {err}"
+                            )
+                    else:
+                        executor.submit(_safe_process_message, body)
             except Exception as e:
                 logger.error(f"Worker: error dispatching message: {e}")
             finally:
@@ -226,51 +288,3 @@ def run_worker() -> None:
             time.sleep(5)
 
 
-# from concurrent.futures import ThreadPoolExecutor
-#
-# executor = ThreadPoolExecutor(max_workers=8)
-#
-#
-# def run_worker() -> None:
-#     import json
-#     from confluent_kafka import KafkaError
-#
-#     logger.info("analyze_image_worker: started, polling Kafka topic... (Parallel mode)")
-#     consumer = kafka_helper.get_kafka_consumer()
-#     consumer.subscribe([kafka_helper.KAFKA_TOPIC])
-#
-#     while True:
-#         try:
-#             msg = consumer.poll(timeout=1.0)
-#             if msg is None:
-#                 continue
-#             if msg.error():
-#                 if msg.error().code() == KafkaError.UNKNOWN_TOPIC_OR_PART:
-#                     time.sleep(1)
-#                     continue
-#                 logger.error(f"Worker: Kafka error: {msg.error()}")
-#                 continue
-#
-#             try:
-#                 body_str = msg.value().decode("utf-8")
-#                 body = json.loads(body_str)
-#
-#                 # Dispatch processing to the thread pool
-#                 executor.submit(_safe_process_message, body)
-#
-#             except Exception as e:
-#                 logger.error(f"Worker: error dispatching message: {e}")
-#             finally:
-#                 # We commit immediately after dispatching or we'd have to wait for the thread
-#                 # This is okay if we assume the thread pool is reliable
-#                 consumer.commit(msg, asynchronous=True)
-#         except Exception as e:
-#             logger.error(f"Worker: polling error: {e}")
-#             time.sleep(5)
-#
-#
-# def _safe_process_message(body):
-#     try:
-#         _process_message(body)
-#     except Exception as e:
-#         logger.error(f"Worker: unhandled error in parallel processor: {e}")
