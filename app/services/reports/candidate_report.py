@@ -140,6 +140,26 @@ def safe_int(val, default=0):
         return default
 
 
+def is_candidate_pic_log(p):
+    if not p:
+        return False
+    if isinstance(p, dict):
+        ev = str(p.get("event_type", "") or "").strip()
+        det = str(p.get("details", "") or "").strip()
+    else:
+        ev = str(getattr(p, "event_type", "") or "").strip()
+        det = str(getattr(p, "details", "") or "").strip()
+
+    ev_norm = ev.lower().replace("_", " ")
+    det_norm = det.lower().replace("_", " ")
+    return (
+        "candidate picture" in ev_norm
+        or "candidate photo" in ev_norm
+        or "candidate picture" in det_norm
+        or "candidate photo" in det_norm
+    )
+
+
 def generate_comprehensive_report(data: dict) -> io.BytesIO:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -342,8 +362,10 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         c_email = j_app.email or c_email
         c_phone = j_app.ph_no or c_phone
 
-    c_email = re.sub(r'([^\s@]{4})[^\s@]*@[^\s]+', lambda m: m.group(1) + '*' * (len(m.group(0)) - 4), c_email)
-    c_phone = c_phone[:4] + '*' * (len(c_phone) - 4)
+    if c_email and c_email != "N/A":
+        c_email = c_email[:4] + "********" if len(c_email) > 4 else c_email + "********"
+    if c_phone and c_phone != "N/A":
+        c_phone = c_phone[:4] + "******" if len(c_phone) > 4 else c_phone
     c_date = format_date(j_app.created_date if j_app else None)
 
     c_city_country = "N/A"
@@ -361,7 +383,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             return Paragraph(text_html, td_style)
 
         img = Image(icon_path, width=12, height=12)
-        t = Table([[img, Paragraph(text_html, td_style)]], colWidths=[18, None])
+        t = Table([[img, Paragraph(text_html, td_style)]], colWidths=[15, None])
         t.setStyle(
             TableStyle(
                 [
@@ -370,12 +392,12 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
                     ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                     ("TOPPADDING", (0, 0), (-1, -1), 0),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                    ("RIGHTPADDING", (0, 0), (0, 0), 6),
+                    ("RIGHTPADDING", (0, 0), (0, 0), 4),
                     (
                         "TOPPADDING",
                         (0, 0),
                         (0, 0),
-                        2,
+                        1,
                     ),
                 ]
             )
@@ -428,15 +450,42 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         ),
     ]
 
-    c_overview_data = [[col1_items, col2_items, col3_items]]
+    candidate_pic_proc = None
+    for p in procs:
+        if is_candidate_pic_log(p):
+            candidate_pic_proc = p
+            break
 
-    t_ov = Table(c_overview_data, colWidths=[2.6 * inch, 2.3 * inch, 2.3 * inch])
+    pic_path = (
+        candidate_pic_proc.get("image_path")
+        if isinstance(candidate_pic_proc, dict)
+        else getattr(candidate_pic_proc, "image_path", None)
+    )
+    if candidate_pic_proc and pic_path:
+        candidate_pic_flowable = get_violation_image_flowable(
+            pic_path, td_center, width=1.30 * inch, height=1.00 * inch
+        )
+    else:
+        candidate_pic_flowable = Paragraph("<font color='#9CA3AF'>No Photo</font>", td_center)
+
+    col4_items = [
+        Paragraph("<font color='#122554'><b>Candidate Picture</b></font>", td_style),
+        Spacer(1, 4),
+        candidate_pic_flowable,
+    ]
+
+    c_overview_data = [[col1_items, col2_items, col3_items, col4_items]]
+
+    t_ov = Table(c_overview_data, colWidths=[1.95 * inch, 1.85 * inch, 1.85 * inch, 1.45 * inch])
     t_ov.setStyle(
         TableStyle(
             [
                 ("BOX", (0, 0), (-1, -1), 1, BORDER_COLOR),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("PADDING", (0, 0), (-1, -1), 10),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ]
         )
     )
@@ -732,7 +781,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         i_model = "Nexus AI"
         i_mode = "Video + Audio"
         i_rec = getattr(i_anal, "recommendation", "N/A") or "N/A"
-        if isinstance(i_rec, str) and i_rec is not "N/A":
+        if isinstance(i_rec, str) and i_rec != "N/A":
             i_rec = i_rec.capitalize().strip()
         i_rec_color = TEXT_PRIMARY.hexval()
         if i_rec and isinstance(i_rec, str):
@@ -888,7 +937,23 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
                 return 2
             return 1
 
-        sorted_procs = sorted(procs, key=get_sev_weight, reverse=True)[:10]
+        violations_procs = [
+            p
+            for p in procs
+            if not is_candidate_pic_log(p)
+            and str(
+                p.get("event_type", "")
+                if isinstance(p, dict)
+                else getattr(p, "event_type", "") or ""
+            ).strip().lower()
+            not in [
+                "no violation",
+                "default",
+                str(ProctoringEventType.default).lower(),
+            ]
+        ]
+
+        sorted_procs = sorted(violations_procs, key=get_sev_weight, reverse=True)[:10]
 
         v_count = 1
         for p in sorted_procs:
@@ -935,7 +1000,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             v_table_data.append(row)
             v_count += 1
 
-        if not procs:
+        if not sorted_procs:
             v_table_data.append(
                 [Paragraph("No violations recorded.", td_center), "", "", "", "", ""]
             )
@@ -955,7 +1020,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
                 ]
             )
         )
-        if not procs:
+        if not sorted_procs:
             t_v.setStyle(TableStyle([("SPAN", (0, 1), (5, 1))]))
         story.append(t_v)
         story.append(Spacer(1, 4))
