@@ -107,9 +107,21 @@ def upload_image_to_s3(image_content, object_name):
 
 def list_proctoring_images(interview_session_id=None):
     bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
-    prefix = "ai-interviews/proctoring/"
+    folder_name = interview_session_id
     if interview_session_id:
-        prefix += f"{interview_session_id}/"
+        try:
+            from app.services import db_operations
+
+            folder_name = db_operations.get_candidate_proctoring_folder(
+                interview_session_id
+            )
+        except Exception as e:
+            logger.error(f"Error resolving candidate folder in list_proctoring_images: {e}")
+            folder_name = interview_session_id
+
+    prefix = "ai-interviews/proctoring/"
+    if folder_name:
+        prefix += f"{folder_name}/"
 
     logger.info(f"S3: listing objects with prefix '{prefix}'")
     try:
@@ -133,6 +145,27 @@ def list_proctoring_images(interview_session_id=None):
                             "size": obj["Size"],
                         }
                     )
+
+        # Fallback to raw interview_session_id prefix if no images found under candidate folder
+        if not images and interview_session_id and folder_name != interview_session_id:
+            fallback_prefix = f"ai-interviews/proctoring/{interview_session_id}/"
+            fallback_pages = paginator.paginate(Bucket=bucket_name, Prefix=fallback_prefix)
+            for page in fallback_pages:
+                if "Contents" in page:
+                    for obj in page["Contents"]:
+                        key = obj["Key"]
+                        image_name = key.split("/")[-1]
+                        s3_url = f"https://{bucket_name}.s3.{consts.AWS_REGION}.amazonaws.com/{key}"
+                        images.append(
+                            {
+                                "image_name": image_name,
+                                "s3_key": key,
+                                "s3_url": s3_url,
+                                "last_modified": obj["LastModified"].isoformat(),
+                                "size": obj["Size"],
+                            }
+                        )
+
         logger.info(f"S3: found {len(images)} images")
         return {"success": True, "images": images}
     except Exception as e:

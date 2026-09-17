@@ -753,7 +753,21 @@ def fetch_proctoring_images(
     session: Session = Depends(deps.get_session),
 ):
     try:
-        s3_result = aws_helper.list_proctoring_images(interview_session_id)
+        folder_name = None
+        if interview_session_id:
+            folder_name = db_operations.get_candidate_proctoring_folder(
+                interview_session_id, session
+            )
+
+        s3_result = aws_helper.list_proctoring_images(folder_name)
+        if (
+            s3_result.get("success")
+            and not s3_result.get("images")
+            and folder_name != interview_session_id
+        ):
+            fallback_result = aws_helper.list_proctoring_images(interview_session_id)
+            if fallback_result.get("success") and fallback_result.get("images"):
+                s3_result = fallback_result
 
         if s3_result.get("success"):
             return {
@@ -777,7 +791,12 @@ def fetch_proctoring_images(
         )
 
 
-def save_proctoring_violation(interview_session_id: str, alert_type: str, image) -> str:
+def save_proctoring_violation(
+    interview_session_id: str,
+    alert_type: str,
+    image,
+    session: Optional[Session] = None,
+) -> str:
     try:
         import os
 
@@ -785,8 +804,11 @@ def save_proctoring_violation(interview_session_id: str, alert_type: str, image)
         clean_alert_type = alert_type.replace(" ", "_").lower()
         image_filename = f"violation_{clean_alert_type}_{timestamp_str}.jpg"
 
+        folder_name = db_operations.get_candidate_proctoring_folder(
+            interview_session_id, session
+        )
         s3_object_name = (
-            f"ai-interviews/proctoring/{interview_session_id}/{image_filename}"
+            f"ai-interviews/proctoring/{folder_name}/{image_filename}"
         )
 
         _, buffer = cv2.imencode(".jpg", image)
@@ -1021,6 +1043,9 @@ async def submit_answers(
         analysis_id = interview_analysis.id
 
         def run_create_pending():
+            folder_name = db_operations.get_candidate_proctoring_folder(
+                interview_session_id
+            )
             audio_s3_keys = {}
             for q_id, audio_b64 in data.audios.items():
                 audio_bytes = base64.b64decode(audio_b64)
@@ -1028,7 +1053,7 @@ async def submit_answers(
                     "%Y%m%d_%H%M%S_%f"
                 )
                 filename = f"audio_{interview_session_id}_{q_id}_{timestamp_str}.wav"
-                s3_key = f"ai-interviews/audio/{interview_session_id}/{filename}"
+                s3_key = f"ai-interviews/audio/{folder_name}/{filename}"
 
                 result = aws_helper.upload_audio_to_s3(audio_bytes, s3_key)
                 if result.get("success"):
@@ -1228,12 +1253,15 @@ async def submit_answer(
     try:
 
         def run_store():
+            folder_name = db_operations.get_candidate_proctoring_folder(
+                interview_session_id
+            )
             timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
             filename = (
                 f"audio_{interview_session_id}_{question_index}_"
                 f"{timestamp_str}{extension}"
             )
-            s3_key = f"ai-interviews/audio/{interview_session_id}/{filename}"
+            s3_key = f"ai-interviews/audio/{folder_name}/{filename}"
 
             result = aws_helper.upload_audio_to_s3(
                 audio_bytes, s3_key, content_type=audio_content_type

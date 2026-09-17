@@ -141,9 +141,23 @@ def upload_pdf(pdf_content, object_name):
 
 def list_proctoring_images(interview_session_id=None):
     bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
-    prefix = "ai-interviews/proctoring/"
+    folder_name = interview_session_id
     if interview_session_id:
-        prefix += f"{interview_session_id}/"
+        try:
+            from app.services import db_operations
+
+            folder_name = db_operations.get_candidate_proctoring_folder(
+                interview_session_id
+            )
+        except Exception as e:
+            logger.error(
+                f"Error resolving candidate folder in minio list_proctoring_images: {e}"
+            )
+            folder_name = interview_session_id
+
+    prefix = "ai-interviews/proctoring/"
+    if folder_name:
+        prefix += f"{folder_name}/"
 
     logger.info(f"MinIO: listing objects with prefix '{prefix}'")
     try:
@@ -163,6 +177,27 @@ def list_proctoring_images(interview_session_id=None):
                     "size": obj.size,
                 }
             )
+
+        # Fallback to raw interview_session_id if no images found under candidate folder
+        if not images and interview_session_id and folder_name != interview_session_id:
+            fallback_prefix = f"ai-interviews/proctoring/{interview_session_id}/"
+            fallback_objects = minio_client.list_objects(
+                bucket_name, prefix=fallback_prefix, recursive=True
+            )
+            for obj in fallback_objects:
+                key = obj.object_name
+                image_name = key.split("/")[-1]
+                minio_url = f"http://{consts.MINIO_HOST}/{bucket_name}/{key}"
+                images.append(
+                    {
+                        "image_name": image_name,
+                        "s3_key": key,
+                        "s3_url": minio_url,
+                        "last_modified": obj.last_modified.isoformat(),
+                        "size": obj.size,
+                    }
+                )
+
         logger.info(f"MinIO: found {len(images)} images")
         return {"success": True, "images": images}
     except Exception as e:

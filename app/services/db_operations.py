@@ -1117,3 +1117,70 @@ def create_or_update_resume_analysis_update_db(
         session.rollback()
         logger.error(f"Unexpected error in create_or_update_resume_analysis_update_db: {str(e)}")
         raise DatabaseQueryException(str(e), "create_or_update_resume_analysis_update_db")
+
+
+def get_candidate_proctoring_folder(
+    interview_session_id: str, session: Optional[Session] = None
+) -> str:
+    """
+    Constructs the folder name for proctoring images using:
+    job_application_id + candidate first_name + last_name from tb_job_applications.
+    Example: '123_John_Doe'
+    Falls back to interview_session_id if resolution fails.
+    """
+    def _resolve(s: Session) -> Optional[str]:
+        # 1. Find application_id from InterviewSessions
+        interview_session = s.exec(
+            select(models.InterviewSessions).where(
+                models.InterviewSessions.interview_session_id == interview_session_id
+            )
+        ).first()
+        app_id = interview_session.application_id if interview_session else None
+
+        # 2. If not found in InterviewSessions, check InterviewAnalysis
+        if not app_id:
+            interview_analysis = s.exec(
+                select(models.InterviewAnalysis).where(
+                    models.InterviewAnalysis.interview_session_id == interview_session_id
+                )
+            ).first()
+            if interview_analysis:
+                app_id = interview_analysis.application_id
+
+        # 3. Fetch JobApplications details
+        if app_id:
+            job_app = s.exec(
+                select(models.JobApplications).where(
+                    models.JobApplications.id == app_id
+                )
+            ).first()
+            if job_app:
+                first_name = (job_app.first_name or "").strip()
+                last_name = (job_app.last_name or "").strip()
+                name_parts = [
+                    re.sub(r"[^a-zA-Z0-9_-]", "_", p)
+                    for p in [first_name, last_name]
+                    if p
+                ]
+                candidate_name = "_".join(name_parts)
+                if candidate_name:
+                    return f"{job_app.id}_{candidate_name}"
+                return f"{job_app.id}"
+        return None
+
+    try:
+        if session is not None:
+            folder = _resolve(session)
+        else:
+            from app.db.session import engine
+            with Session(engine) as local_session:
+                folder = _resolve(local_session)
+        if folder:
+            return folder
+    except Exception as e:
+        logger.error(
+            f"Error resolving candidate proctoring folder for session {interview_session_id}: {e}"
+        )
+
+    return str(interview_session_id)
+

@@ -13,6 +13,7 @@ from app import models
 
 from app.services import kafka_helper
 from app.services import minio_helper as aws_helper
+from app.services import db_operations
 from app.utils import timezone_utils
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,10 @@ def warm_up_workers() -> None:
 
 
 def _save_proctoring_violation(
-    interview_session_id: str, alert_type: str, image
+    interview_session_id: str,
+    alert_type: str,
+    image,
+    session: Session = None,
 ) -> str:
     timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
     clean_alert_type = alert_type.replace(" ", "_").lower()
@@ -99,7 +103,11 @@ def _save_proctoring_violation(
         image_filename = f"candidate_picture_{timestamp_str}.jpg"
     else:
         image_filename = f"violation_{clean_alert_type}_{timestamp_str}.jpg"
-    s3_object_name = f"ai-interviews/proctoring/{interview_session_id}/{image_filename}"
+
+    folder_name = db_operations.get_candidate_proctoring_folder(
+        interview_session_id, session
+    )
+    s3_object_name = f"ai-interviews/proctoring/{folder_name}/{image_filename}"
 
     _, buffer = cv2.imencode(".jpg", image)
     image_bytes = buffer.tobytes()
@@ -159,7 +167,7 @@ def _process_message(payload: dict) -> None:
 
             try:
                 image_path = _save_proctoring_violation(
-                    interview_session_id, alerts[0], image
+                    interview_session_id, alerts[0], image, session=session
                 )
 
                 proctoring_log = models.ProctoringLogs(
@@ -258,7 +266,10 @@ def run_worker() -> None:
 
                             if image is not None:
                                 image_path = _save_proctoring_violation(
-                                    interview_session_id, "candidate_picture", image
+                                    interview_session_id,
+                                    "candidate_picture",
+                                    image,
+                                    session=session,
                                 )
                                 proctoring_log = models.ProctoringLogs(
                                     interview_analysis_id=interview_analysis.id,
