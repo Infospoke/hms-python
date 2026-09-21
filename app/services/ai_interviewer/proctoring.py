@@ -40,6 +40,7 @@ class ProctoringEngine:
         self.COCO_PERSON_CLASS_ID = 0
 
         self.LOW_LIGHT_BRIGHTNESS_THRESHOLD = 90
+        self.THRESH_LIP_OPEN = 0.12
 
         # Build (and cache) the model bundle for whichever thread constructs
         # the singleton, so the existing preload-on-startup behavior in
@@ -113,6 +114,21 @@ class ProctoringEngine:
         h_dist = self.calculate_distance(landmarks[indices[2]], landmarks[indices[3]])
         return v_dist / h_dist if h_dist > 0 else 0.0
 
+    def get_mouth_aspect_ratio(self, landmarks):
+        """
+        Calculate the Mouth Aspect Ratio (MAR) using inner lip landmarks.
+        Upper inner: 81, 13, 311
+        Lower inner: 178, 14, 402
+        Corners inner: 78, 308
+        """
+        v1 = self.calculate_distance(landmarks[81], landmarks[178])
+        v2 = self.calculate_distance(landmarks[13], landmarks[14])
+        v3 = self.calculate_distance(landmarks[311], landmarks[402])
+        h = self.calculate_distance(landmarks[78], landmarks[308])
+        if h == 0:
+            return 0.0
+        return (v1 + v2 + v3) / (3.0 * h)
+
     def _mean_brightness(self, bgr_image):
         gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
         return float(np.mean(gray))
@@ -146,9 +162,15 @@ class ProctoringEngine:
 
         return None, False
 
-    def analyze_frame(self, image_array):
+    def analyze_frame(
+        self,
+        image_array,
+        audio_detected: bool = False,
+        is_speaking: bool = False,
+    ):
         models = self._get_models()
         alerts = []
+        has_voice = bool(audio_detected or is_speaking)
         results = models.yolo(image_array, verbose=False, stream=True)
         phone_detected = False
         person_count = 0
@@ -166,7 +188,13 @@ class ProctoringEngine:
         if person_count > 1:
             alerts.append("Multiple People Detected")
 
-        metrics = {"gaze": "Center", "head": "Forward", "emotion": "Neutral"}
+        metrics = {
+            "gaze": "Center",
+            "head": "Forward",
+            "emotion": "Neutral",
+            "mouth": "Closed",
+            "lip_movement": False,
+        }
 
         landmarks_list, face_present_unrefined = self._detect_face_landmarks(
             models, image_array
@@ -176,12 +204,24 @@ class ProctoringEngine:
             if face_present_unrefined:
                 return {
                     "alerts": alerts,
-                    "metrics": {"gaze": "N/A", "head": "N/A", "emotion": "N/A"},
+                    "metrics": {
+                        "gaze": "N/A",
+                        "head": "N/A",
+                        "emotion": "N/A",
+                        "mouth": "N/A",
+                        "lip_movement": False,
+                    },
                 }
             alerts.append("No Face Detected")
             return {
                 "alerts": alerts,
-                "metrics": {"gaze": "N/A", "head": "N/A", "emotion": "N/A"},
+                "metrics": {
+                    "gaze": "N/A",
+                    "head": "N/A",
+                    "emotion": "N/A",
+                    "mouth": "N/A",
+                    "lip_movement": False,
+                },
             }
 
         lm = landmarks_list[0].landmark
@@ -211,7 +251,170 @@ class ProctoringEngine:
             metrics["head"] = "Left"
             alerts.append("Turning Head Left")
 
+        # Lip Movement / Mouth Aspect Ratio
+        mar = self.get_mouth_aspect_ratio(lm)
+        metrics["mar"] = round(float(mar), 3)
+        is_lip_moving = mar > self.THRESH_LIP_OPEN
+        metrics["mouth"] = "Open" if is_lip_moving else "Closed"
+        metrics["lip_movement"] = is_lip_moving
+
+        # Check for Voice / Audio without candidate Lip Movement (Proxy Speaking / Someone else speaking)
+        if has_voice and not is_lip_moving:
+            alerts.append("Voice Detected Without Lip Movement")
+
         return {"alerts": alerts, "metrics": metrics}
+
+    def analyze_video_answer(self, video_file_path: str, sample_fps: float = 2.0) -> dict:
+        """
+        Samples frames from a submitted answer video recording to analyze lip tracking,
+        face presence, multiple people, phone usage, and gaze/pose violations.
+        """
+        cap = cv2.VideoCapture(video_file_path)
+        if not cap.isOpened():
+            return {
+                "success": False,
+                "error": "Could not open video file",
+                "lip_movement_ratio": 0.0,
+                "face_detected_ratio": 0.0,
+                "is_proxy_speaking": False,
+                "no_face_detected": False,
+                "multiple_people_detected": False,
+                "phone_detected": False,
+                "looking_away_detected": False,
+                "alerts": [],
+                "violations": [],
+                "violation_snapshots": {},
+            }
+
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        sample_interval = max(1, int(round(fps / sample_fps)))
+
+        total_frames_sampled = 0
+        lip_movement_frames = 0
+        face_detected_frames = 0
+        multiple_people_frames = 0
+        phone_detected_frames = 0
+        looking_away_frames = 0
+        mar_values = []
+        violation_snapshots = {}
+        alerts = set()
+        frame_idx = 0
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            if frame_idx % sample_interval == 0:
+                total_frames_sampled += 1
+                result = self.analyze_frame(frame, audio_detected=True)
+                frame_alerts = result.get("alerts", [])
+                metrics = result.get("metrics", {})
+                mar = metrics.get("mar", 0.0)
+                is_lip_moving = metrics.get("lip_movement", False)
+
+                # Face Presence
+                if "No Face Detected" not in frame_alerts:
+                    face_detected_frames += 1
+                elif "no_face" not in violation_snapshots:
+                    violation_snapshots["no_face"] = frame.copy()
+
+                # Multiple People
+                if "Multiple People Detected" in frame_alerts:
+                    multiple_people_frames += 1
+                    if "multiple_people" not in violation_snapshots:
+                        violation_snapshots["multiple_people"] = frame.copy()
+
+                # Phone Detected
+                if "Cell Phone Detected" in frame_alerts:
+                    phone_detected_frames += 1
+                    if "phone" not in violation_snapshots:
+                        violation_snapshots["phone"] = frame.copy()
+
+                # Looking Away
+                if any("Looking Away" in a or "Turning Head" in a for a in frame_alerts):
+                    looking_away_frames += 1
+                    if "looking_away" not in violation_snapshots:
+                        violation_snapshots["looking_away"] = frame.copy()
+
+                # Lip Aspect Ratio
+                if mar > 0:
+                    mar_values.append(mar)
+
+                if is_lip_moving:
+                    lip_movement_frames += 1
+                elif "proxy_speaking" not in violation_snapshots and metrics.get("mouth") == "Closed":
+                    violation_snapshots["proxy_speaking"] = frame.copy()
+
+                for a in frame_alerts:
+                    if a != "Voice Detected Without Lip Movement":
+                        alerts.add(a)
+
+            frame_idx += 1
+
+        cap.release()
+
+        avg_mar = float(np.mean(mar_values)) if mar_values else 0.0
+        lip_movement_ratio = (
+            float(lip_movement_frames / total_frames_sampled)
+            if total_frames_sampled > 0
+            else 0.0
+        )
+        face_detected_ratio = (
+            float(face_detected_frames / total_frames_sampled)
+            if total_frames_sampled > 0
+            else 0.0
+        )
+        looking_away_ratio = (
+            float(looking_away_frames / total_frames_sampled)
+            if total_frames_sampled > 0
+            else 0.0
+        )
+
+        # Flag Evaluation
+        is_proxy_speaking = total_frames_sampled >= 4 and lip_movement_ratio < 0.15
+        no_face_detected = total_frames_sampled >= 4 and face_detected_ratio < 0.40
+        multiple_people_detected = multiple_people_frames >= 2
+        phone_detected = phone_detected_frames >= 2
+        looking_away_detected = total_frames_sampled >= 4 and looking_away_ratio > 0.60
+
+        violations = []
+        if is_proxy_speaking:
+            violations.append("Voice Detected Without Lip Movement in Answer Recording")
+            alerts.add("Voice Detected Without Lip Movement in Answer Recording")
+        if no_face_detected:
+            violations.append("Candidate Face Missing / Not Detected in Answer Video")
+            alerts.add("No Face Detected in Answer Video")
+        if multiple_people_detected:
+            violations.append("Multiple People Detected in Answer Video")
+            alerts.add("Multiple People Detected in Answer Video")
+        if phone_detected:
+            violations.append("Cell Phone Detected in Answer Video")
+            alerts.add("Cell Phone Detected in Answer Video")
+        if looking_away_detected:
+            violations.append("Looking Away from Camera Sustained During Answer")
+            alerts.add("Looking Away Sustained")
+
+        return {
+            "success": True,
+            "total_frames_sampled": total_frames_sampled,
+            "lip_movement_frames": lip_movement_frames,
+            "lip_movement_ratio": round(lip_movement_ratio, 3),
+            "face_detected_ratio": round(face_detected_ratio, 3),
+            "average_mar": round(avg_mar, 3),
+            "is_proxy_speaking": is_proxy_speaking,
+            "no_face_detected": no_face_detected,
+            "multiple_people_detected": multiple_people_detected,
+            "phone_detected": phone_detected,
+            "looking_away_detected": looking_away_detected,
+            "alerts": list(alerts),
+            "violations": violations,
+            "violation_snapshots": violation_snapshots,
+            "violation_snapshot": violation_snapshots.get("proxy_speaking") if is_proxy_speaking else (
+                list(violation_snapshots.values())[0] if violation_snapshots else None
+            ),
+        }
+
 
 
 def suppress_tf_warnings():

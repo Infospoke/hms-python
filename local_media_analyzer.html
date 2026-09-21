@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Multi-Question Video Interview & Parallel Analysis Test</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #070b14;
+            --bg-secondary: #0f172a;
+            --bg-tertiary: #1e293b;
+            --card-bg: rgba(15, 23, 42, 0.90);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-primary: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.25);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.25);
+            --warning: #f59e0b;
+            --success: #10b981;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --font-sans: 'Plus Jakarta Sans', sans-serif;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 24px 20px;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.14) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.10) 0px, transparent 50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1300px;
+            width: 100%;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: 2.1rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 6px;
+            letter-spacing: -0.02em;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+        }
+
+        /* Question Progress Wizard */
+        .question-stepper {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 14px 18px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .stepper-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .q-badge {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-family: var(--font-mono);
+        }
+
+        .q-text {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .stepper-pills {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .step-pill {
+            padding: 6px 14px;
+            border-radius: 10px;
+            font-size: 0.78rem;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .step-pill.active {
+            background: rgba(99, 102, 241, 0.25);
+            border-color: #6366f1;
+            color: #818cf8;
+        }
+
+        .step-pill.submitted {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+            color: #6ee7b7;
+        }
+
+        /* Grid Layout */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Card Styles */
+        .card {
+            background-color: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            font-family: var(--font-display);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Video Feed Viewports */
+        .viewport-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+
+        @media (max-width: 640px) {
+            .viewport-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .video-box {
+            position: relative;
+            aspect-ratio: 4 / 3;
+            background-color: #030712;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #liveWebcam {
+            transform: scaleX(-1);
+        }
+
+        canvas#motionCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .box-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #cbd5e1;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            z-index: 10;
+        }
+
+        .rec-pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--danger);
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse-dot 1s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        /* Status Pills */
+        .status-pill {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-idle {
+            background-color: rgba(148, 163, 184, 0.12);
+            color: #cbd5e1;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+        }
+
+        .status-recording {
+            background-color: rgba(239, 68, 68, 0.18);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.35);
+        }
+
+        .status-active {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        /* Metrics Display Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .metric-card {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .metric-val {
+            font-family: var(--font-mono);
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #818cf8;
+        }
+
+        .metric-lbl {
+            font-size: 0.70rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+            text-transform: uppercase;
+        }
+
+        /* Analysis Gauges & Visualizers */
+        .analysis-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: rgba(10, 15, 30, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .gauge-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .gauge-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            width: 140px;
+            flex-shrink: 0;
+        }
+
+        .progress-bar {
+            flex: 1;
+            height: 10px;
+            background-color: var(--bg-tertiary);
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 5px;
+            transition: width 0.08s ease;
+        }
+
+        .fill-audio {
+            background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+        }
+
+        .fill-video {
+            background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+        }
+
+        .fill-mismatch {
+            background: linear-gradient(90deg, #f59e0b, #ef4444);
+        }
+
+        .gauge-value {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            font-weight: 600;
+            width: 70px;
+            text-align: right;
+            color: var(--text-primary);
+        }
+
+        /* Canvas Spectrum Visualizer */
+        .spectrum-container {
+            width: 100%;
+            height: 60px;
+            background-color: #030712;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        canvas#audioSpectrumCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Form Controls */
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        input[type="text"], input[type="number"], select {
+            width: 100%;
+            padding: 9px 12px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="range"] {
+            accent-color: var(--accent-primary);
+            cursor: pointer;
+        }
+
+        input:focus {
+            border-color: var(--accent-primary);
+        }
+
+        /* Action Buttons */
+        .btn-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-family: var(--font-sans);
+            font-weight: 600;
+            font-size: 0.88rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+            transition: all 0.2s ease;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(99, 102, 241, 0.45);
+        }
+
+        button.stop {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+        }
+
+        button.upload {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+        }
+
+        button.secondary {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            box-shadow: none;
+            color: #cbd5e1;
+        }
+
+        button.secondary:hover:not(:disabled) {
+            background: #334155;
+            color: white;
+        }
+
+        button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* Log Terminal */
+        .log-terminal {
+            background-color: #030712;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-family: var(--font-mono);
+            font-size: 0.74rem;
+            color: #cbd5e1;
+            height: 160px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .log-line {
+            line-height: 1.4;
+        }
+
+        .log-info { color: #94a3b8; }
+        .log-success { color: #34d399; }
+        .log-warn { color: #fbbf24; }
+        .log-danger { color: #f87171; font-weight: 600; }
+
+        /* Violation Banner Alert */
+        .violation-banner {
+            display: none;
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #fca5a5;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: pulse-danger 1.5s infinite;
+        }
+
+        @keyframes pulse-danger {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>AI Multi-Question Continuous Video Interview Test</h1>
+            <p class="subtitle">Test recording and submitting multiple questions in sequence with live parallel audio/video proctoring.</p>
+        </header>
+
+        <!-- Continuous Question Stepper -->
+        <div class="question-stepper">
+            <div class="stepper-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span id="currentQBadge" class="q-badge">QUESTION 1 OF 3</span>
+                    <span id="currentQText" class="q-text">1. Please introduce yourself and summarize your key technical skills.</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button id="prevQBtn" class="secondary" style="width: auto; padding: 6px 12px; font-size: 0.78rem;">◀ Prev</button>
+                    <button id="nextQBtn" class="secondary" style="width: auto; padding: 6px 12px; font-size: 0.78rem;">Next ▶</button>
+                </div>
+            </div>
+
+            <!-- Question Step Pills -->
+            <div id="stepPillsContainer" class="stepper-pills">
+                <div class="step-pill active" onclick="selectQuestion(1)">Q1: Introduction</div>
+                <div class="step-pill" onclick="selectQuestion(2)">Q2: Technical Experience</div>
+                <div class="step-pill" onclick="selectQuestion(3)">Q3: Challenge & Solution</div>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <!-- Left Column: Video Feeds & Parallel Analyzers -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path></svg>
+                        Camera Feed & Motion HUD
+                    </div>
+                    <div id="statusBadge" class="status-pill status-idle">Camera Idle</div>
+                </div>
+
+                <!-- Live Camera and Playback Grid -->
+                <div class="viewport-grid">
+                    <!-- Live Feed -->
+                    <div class="video-box">
+                        <div class="box-badge">
+                            <div id="liveDot" class="rec-pulse-dot" style="display: none;"></div>
+                            <span id="liveBoxLabel">LIVE CAMERA</span>
+                        </div>
+                        <video id="liveWebcam" autoplay playsinline muted></video>
+                        <canvas id="motionCanvas"></canvas>
+                    </div>
+
+                    <!-- Playback Feed -->
+                    <div class="video-box">
+                        <div class="box-badge"><span id="playbackBoxLabel">RECORDED ANSWER Q1</span></div>
+                        <video id="playbackVideo" controls playsinline></video>
+                    </div>
+                </div>
+
+                <!-- Violation Banner -->
+                <div id="violationBanner" class="violation-banner" style="display: none;">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"></path></svg>
+                    <div>
+                        <strong>VIOLATION DETECTED:</strong> Sustained voice without lip movement for 15s. Violation logged.
+                    </div>
+                </div>
+
+                <!-- Live Metrics Summary Bar -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div id="statRecTime" class="metric-val">00:00</div>
+                        <div class="metric-lbl">Q Record Time</div>
+                    </div>
+                    <div class="metric-card">
+                        <div id="statFileSize" class="metric-val">0 KB</div>
+                        <div class="metric-lbl">Video Size</div>
+                    </div>
+                    <div class="metric-card">
+                        <div id="statSubmittedCount" class="metric-val">0 / 3</div>
+                        <div class="metric-lbl">Submitted Qs</div>
+                    </div>
+                    <div class="metric-card">
+                        <div id="statViolationsCount" class="metric-val">0</div>
+                        <div class="metric-lbl">Violations Fired</div>
+                    </div>
+                </div>
+
+                <!-- Parallel Real-Time Audio & Video Analysis Panel -->
+                <div class="analysis-section">
+                    <div style="font-weight: 700; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 2px;">
+                        REAL-TIME PARALLEL ANALYSIS (LOCAL ENGINE)
+                    </div>
+
+                    <!-- Audio Volume Bar -->
+                    <div class="gauge-row">
+                        <span class="gauge-label">Audio Volume (Mic)</span>
+                        <div class="progress-bar">
+                            <div id="audioVolFill" class="progress-fill fill-audio"></div>
+                        </div>
+                        <span id="audioVolVal" class="gauge-value">0%</span>
+                    </div>
+
+                    <!-- Video Motion / Lip Movement Bar -->
+                    <div class="gauge-row">
+                        <span class="gauge-label">Lip/Motion Energy</span>
+                        <div class="progress-bar">
+                            <div id="videoMotionFill" class="progress-fill fill-video"></div>
+                        </div>
+                        <span id="videoMotionVal" class="gauge-value">0%</span>
+                    </div>
+
+                    <!-- Cumulative Mismatch Timer Bar -->
+                    <div class="gauge-row">
+                        <span class="gauge-label">Voice Without Lips (15s)</span>
+                        <div class="progress-bar">
+                            <div id="mismatchFill" class="progress-fill fill-mismatch"></div>
+                        </div>
+                        <span id="mismatchVal" class="gauge-value">0.0s</span>
+                    </div>
+
+                    <!-- Real-Time Audio Frequency Spectrum Canvas -->
+                    <div style="margin-top: 4px;">
+                        <div style="font-size: 0.70rem; color: var(--text-secondary); margin-bottom: 3px;">LIVE AUDIO SPECTRUM</div>
+                        <div class="spectrum-container">
+                            <canvas id="audioSpectrumCanvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Activity Log Terminal -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);">INTERVIEW PROCTORING & SUBMISSION LOGS</span>
+                        <button id="clearLogsBtn" class="secondary" style="width: auto; padding: 4px 10px; font-size: 0.70rem;">Clear</button>
+                    </div>
+                    <div id="logTerminal" class="log-terminal">
+                        <div class="log-line log-info">[System] Ready. Click "Start Camera & Mic" to begin multi-question interview.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Multi-Question Controls & Settings -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"></path></svg>
+                        Continuous Interview Controls
+                    </div>
+                </div>
+
+                <!-- Session Configuration -->
+                <div class="control-group">
+                    <label for="apiUrl">Video Answer Submit Endpoint (POST)</label>
+                    <input type="text" id="apiUrl" value="http://127.0.0.1:5002/api/interview/submit-video-answer">
+                </div>
+
+                <div class="control-group">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label for="sessionDropdown">Active Interview Session</label>
+                        <a href="javascript:void(0)" id="refreshSessionsBtn" style="font-size: 0.72rem; color: #818cf8; text-decoration: none;">🔄 Refresh List</a>
+                    </div>
+                    <select id="sessionDropdown">
+                        <option value="">Loading active sessions...</option>
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="control-group">
+                        <label for="sessionId">Session ID / Key</label>
+                        <input type="text" id="sessionId" value="75">
+                    </div>
+                    <div class="control-group">
+                        <label for="questionIndexInput">Current Q Index</label>
+                        <input type="number" id="questionIndexInput" value="1" min="1" max="10">
+                    </div>
+                </div>
+
+                <!-- Continuous Flow Settings -->
+                <div style="background: rgba(10, 15, 30, 0.5); padding: 12px; border-radius: 10px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="autoAdvanceToggle" checked style="width: 16px; height: 16px; cursor: pointer;">
+                        <label for="autoAdvanceToggle" style="text-transform: none; font-size: 0.82rem; cursor: pointer; color: #cbd5e1;">
+                            Auto-advance to next question after submit
+                        </label>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="isFinalToggle" style="width: 16px; height: 16px; cursor: pointer;">
+                        <label for="isFinalToggle" style="text-transform: none; font-size: 0.82rem; cursor: pointer; color: #cbd5e1;">
+                            Mark as Final Question (<code>is_final: true</code>)
+                        </label>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="sendLiveFramesToggle" checked style="width: 16px; height: 16px; cursor: pointer;">
+                        <label for="sendLiveFramesToggle" style="text-transform: none; font-size: 0.82rem; cursor: pointer; color: #cbd5e1;">
+                            Stream live proctoring frames while recording
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Sensitivity Controls -->
+                <div class="control-group">
+                    <div style="display: flex; justify-content: space-between;">
+                        <label>Voice Sensitivity: <span id="voiceThreshVal" style="color: #818cf8;">15%</span></label>
+                    </div>
+                    <input type="range" id="voiceThreshSlider" min="5" max="50" value="15">
+                </div>
+
+                <div class="control-group">
+                    <div style="display: flex; justify-content: space-between;">
+                        <label>Lip Motion Sensitivity: <span id="lipThreshVal" style="color: #818cf8;">8%</span></label>
+                    </div>
+                    <input type="range" id="lipThreshSlider" min="2" max="30" value="8">
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="btn-grid" style="margin-top: 6px;">
+                    <button id="camBtn">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path></svg>
+                        Start Camera & Mic
+                    </button>
+
+                    <button id="recBtn" disabled>
+                        <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle></svg>
+                        Start Recording Answer (Q1)
+                    </button>
+
+                    <button id="uploadBtn" class="upload" disabled>
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.5V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"></path></svg>
+                        Submit Video Answer (Q1) & Next
+                    </button>
+
+                    <button id="downloadBtn" class="secondary" disabled>
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.5V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"></path></svg>
+                        Download Current Q Video (.webm)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden canvas for optical motion analysis -->
+    <canvas id="analysisCanvas" width="160" height="120" style="display: none;"></canvas>
+
+    <script>
+        // Preset Questions List
+        const questionsList = [
+            { index: 1, title: "Q1: Introduction", text: "1. Please introduce yourself and summarize your key technical skills." },
+            { index: 2, title: "Q2: Technical Experience", text: "2. Can you explain your recent project architecture and challenges faced?" },
+            { index: 3, title: "Q3: Challenge & Solution", text: "3. How do you approach debugging high-concurrency systems or performance bottlenecks?" }
+        ];
+
+        let currentQuestionIndex = 1;
+        const recordedAnswers = {}; // { 1: Blob, 2: Blob, 3: Blob }
+
+        // DOM Elements
+        const camBtn = document.getElementById('camBtn');
+        const recBtn = document.getElementById('recBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const clearLogsBtn = document.getElementById('clearLogsBtn');
+        const prevQBtn = document.getElementById('prevQBtn');
+        const nextQBtn = document.getElementById('nextQBtn');
+
+        const currentQBadge = document.getElementById('currentQBadge');
+        const currentQText = document.getElementById('currentQText');
+        const stepPillsContainer = document.getElementById('stepPillsContainer');
+        const questionIndexInput = document.getElementById('questionIndexInput');
+        const playbackBoxLabel = document.getElementById('playbackBoxLabel');
+
+        const autoAdvanceToggle = document.getElementById('autoAdvanceToggle');
+        const isFinalToggle = document.getElementById('isFinalToggle');
+        const sendLiveFramesToggle = document.getElementById('sendLiveFramesToggle');
+
+        const apiUrlInput = document.getElementById('apiUrl');
+        const sessionIdInput = document.getElementById('sessionId');
+
+        const voiceThreshSlider = document.getElementById('voiceThreshSlider');
+        const voiceThreshVal = document.getElementById('voiceThreshVal');
+        const lipThreshSlider = document.getElementById('lipThreshSlider');
+        const lipThreshVal = document.getElementById('lipThreshVal');
+
+        const liveWebcam = document.getElementById('liveWebcam');
+        const playbackVideo = document.getElementById('playbackVideo');
+        const motionCanvas = document.getElementById('motionCanvas');
+        const audioSpectrumCanvas = document.getElementById('audioSpectrumCanvas');
+        const analysisCanvas = document.getElementById('analysisCanvas');
+
+        const statusBadge = document.getElementById('statusBadge');
+        const liveDot = document.getElementById('liveDot');
+        const liveBoxLabel = document.getElementById('liveBoxLabel');
+        const violationBanner = document.getElementById('violationBanner');
+        const logTerminal = document.getElementById('logTerminal');
+
+        // Metrics
+        const statRecTime = document.getElementById('statRecTime');
+        const statFileSize = document.getElementById('statFileSize');
+        const statSubmittedCount = document.getElementById('statSubmittedCount');
+        const statViolationsCount = document.getElementById('statViolationsCount');
+
+        const audioVolFill = document.getElementById('audioVolFill');
+        const audioVolVal = document.getElementById('audioVolVal');
+        const videoMotionFill = document.getElementById('videoMotionFill');
+        const videoMotionVal = document.getElementById('videoMotionVal');
+        const mismatchFill = document.getElementById('mismatchFill');
+        const mismatchVal = document.getElementById('mismatchVal');
+
+        // Auto-configure endpoints if loaded via HTTP
+        if (window.location.protocol && window.location.protocol.startsWith('http')) {
+            apiUrlInput.value = `${window.location.origin}/api/interview/submit-video-answer`;
+        }
+
+        // Global State
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let currentRecordedBlob = null;
+
+        // Audio Analysis
+        let audioContext = null;
+        let analyser = null;
+        let freqDataArray = null;
+        let audioLoopId = null;
+
+        // Video Motion Analysis
+        let prevFrameData = null;
+        let videoAnalysisInterval = null;
+        let motionEnergy = 0;
+        let audioVolume = 0;
+        let isSpeaking = false;
+        let isLipMoving = false;
+
+        // Cumulative Mismatch Tracking (15s threshold with auto-reset)
+        let mismatchAccumulatorSec = 0.0;
+        let violationsCount = 0;
+        const VIOLATION_THRESHOLD_SEC = 15.0;
+
+        // Timers
+        let recStartTime = null;
+        let recTimer = null;
+        let liveFrameSenderTimer = null;
+
+        // Logger Helper
+        function log(msg, type = 'log-info') {
+            const el = document.createElement('div');
+            el.className = `log-line ${type}`;
+            const time = new Date().toLocaleTimeString();
+            el.textContent = `[${time}] ${msg}`;
+            logTerminal.appendChild(el);
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+        }
+
+        clearLogsBtn.addEventListener('click', () => {
+            logTerminal.innerHTML = '';
+            log('Logs cleared.', 'log-info');
+        });
+
+        // Sensitivity Sliders
+        voiceThreshSlider.addEventListener('input', (e) => {
+            voiceThreshVal.textContent = `${e.target.value}%`;
+        });
+        lipThreshSlider.addEventListener('input', (e) => {
+            lipThreshVal.textContent = `${e.target.value}%`;
+        });
+
+        // Select Question Function
+        function selectQuestion(qIdx) {
+            currentQuestionIndex = Math.max(1, Math.min(questionsList.length, qIdx));
+            questionIndexInput.value = currentQuestionIndex;
+
+            const qObj = questionsList.find(q => q.index === currentQuestionIndex) || {
+                index: currentQuestionIndex,
+                title: `Q${currentQuestionIndex}`,
+                text: `Question ${currentQuestionIndex}`
+            };
+
+            currentQBadge.textContent = `QUESTION ${currentQuestionIndex} OF ${questionsList.length}`;
+            currentQText.textContent = qObj.text;
+            playbackBoxLabel.textContent = `RECORDED ANSWER Q${currentQuestionIndex}`;
+
+            recBtn.innerHTML = `
+                <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle></svg>
+                Start Recording Answer (Q${currentQuestionIndex})
+            `;
+            uploadBtn.innerHTML = `
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.5V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"></path></svg>
+                Submit Video Answer (Q${currentQuestionIndex}) & Next
+            `;
+
+            // Auto toggle isFinal if last question
+            isFinalToggle.checked = (currentQuestionIndex === questionsList.length);
+
+            // Update step pills
+            renderStepPills();
+
+            // Load existing recording for this question if present
+            if (recordedAnswers[currentQuestionIndex]) {
+                currentRecordedBlob = recordedAnswers[currentQuestionIndex];
+                playbackVideo.src = URL.createObjectURL(currentRecordedBlob);
+                uploadBtn.disabled = false;
+                downloadBtn.disabled = false;
+                const kb = Math.round(currentRecordedBlob.size / 1024);
+                statFileSize.textContent = kb > 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${kb} KB`;
+            } else {
+                currentRecordedBlob = null;
+                playbackVideo.src = '';
+                uploadBtn.disabled = true;
+                downloadBtn.disabled = true;
+                statFileSize.textContent = '0 KB';
+                statRecTime.textContent = '00:00';
+            }
+
+            log(`Switched to Question ${currentQuestionIndex}: ${qObj.title}`);
+        }
+
+        function renderStepPills() {
+            stepPillsContainer.innerHTML = '';
+            questionsList.forEach(q => {
+                const pill = document.createElement('div');
+                const isSubmitted = !!recordedAnswers[q.index + '_submitted'];
+                const isActive = (q.index === currentQuestionIndex);
+
+                pill.className = `step-pill ${isActive ? 'active' : ''} ${isSubmitted ? 'submitted' : ''}`;
+                pill.textContent = isSubmitted ? `✅ ${q.title}` : q.title;
+                pill.onclick = () => selectQuestion(q.index);
+                stepPillsContainer.appendChild(pill);
+            });
+
+            // Update submitted count metric
+            const submittedCount = questionsList.filter(q => !!recordedAnswers[q.index + '_submitted']).length;
+            statSubmittedCount.textContent = `${submittedCount} / ${questionsList.length}`;
+        }
+
+        questionIndexInput.addEventListener('change', (e) => {
+            selectQuestion(parseInt(e.target.value, 10));
+        });
+        prevQBtn.addEventListener('click', () => selectQuestion(currentQuestionIndex - 1));
+        nextQBtn.addEventListener('click', () => selectQuestion(currentQuestionIndex + 1));
+
+        // Audio Analysis Engine
+        function setupAudioAnalysis(stream) {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                freqDataArray = new Uint8Array(analyser.frequencyBinCount);
+                const canvasCtx = audioSpectrumCanvas.getContext('2d');
+
+                function renderAudioLoop() {
+                    if (!analyser) return;
+                    audioLoopId = requestAnimationFrame(renderAudioLoop);
+
+                    analyser.getByteFrequencyData(freqDataArray);
+
+                    let sum = 0;
+                    for (let i = 0; i < freqDataArray.length; i++) sum += freqDataArray[i];
+                    const avg = sum / freqDataArray.length;
+                    audioVolume = Math.min(100, Math.round((avg / 60) * 100));
+
+                    audioVolFill.style.width = `${audioVolume}%`;
+                    audioVolVal.textContent = `${audioVolume}%`;
+
+                    const voiceThresh = parseInt(voiceThreshSlider.value, 10);
+                    isSpeaking = audioVolume >= voiceThresh;
+
+                    // Spectrum Draw
+                    const width = audioSpectrumCanvas.width = audioSpectrumCanvas.clientWidth;
+                    const height = audioSpectrumCanvas.height = audioSpectrumCanvas.clientHeight;
+                    canvasCtx.clearRect(0, 0, width, height);
+
+                    const barWidth = (width / freqDataArray.length) * 2.2;
+                    let x = 0;
+                    for (let i = 0; i < freqDataArray.length; i++) {
+                        const barHeight = (freqDataArray[i] / 255) * height;
+                        const r = Math.min(255, 99 + barHeight * 1.5);
+                        const g = Math.min(255, 102 + barHeight);
+                        canvasCtx.fillStyle = `rgb(${r},${g},241)`;
+                        canvasCtx.fillRect(x, height - barHeight, barWidth - 1, barHeight);
+                        x += barWidth;
+                    }
+                }
+
+                renderAudioLoop();
+                log('Audio frequency & volume analyzer initialized.', 'log-success');
+            } catch (err) {
+                log(`Audio context error: ${err.message}`, 'log-danger');
+            }
+        }
+
+        // Video & Motion / Lip Movement Analysis Loop
+        function setupVideoAnalysis() {
+            const ctx = analysisCanvas.getContext('2d');
+            const hudCtx = motionCanvas.getContext('2d');
+
+            videoAnalysisInterval = setInterval(() => {
+                if (!mediaStream || liveWebcam.videoWidth === 0) return;
+
+                motionCanvas.width = liveWebcam.clientWidth;
+                motionCanvas.height = liveWebcam.clientHeight;
+                hudCtx.clearRect(0, 0, motionCanvas.width, motionCanvas.height);
+
+                ctx.drawImage(liveWebcam, 0, 0, analysisCanvas.width, analysisCanvas.height);
+                const frame = ctx.getImageData(0, 0, analysisCanvas.width, analysisCanvas.height);
+                const data = frame.data;
+
+                let diffSum = 0;
+                let sampleCount = 0;
+
+                const startY = Math.floor(analysisCanvas.height * 0.45);
+                const endY = Math.floor(analysisCanvas.height * 0.85);
+                const startX = Math.floor(analysisCanvas.width * 0.30);
+                const endX = Math.floor(analysisCanvas.width * 0.70);
+
+                if (prevFrameData) {
+                    for (let y = startY; y < endY; y += 2) {
+                        for (let x = startX; x < endX; x += 2) {
+                            const idx = (y * analysisCanvas.width + x) * 4;
+                            diffSum += (Math.abs(data[idx] - prevFrameData[idx]) +
+                                        Math.abs(data[idx + 1] - prevFrameData[idx + 1]) +
+                                        Math.abs(data[idx + 2] - prevFrameData[idx + 2])) / 3;
+                            sampleCount++;
+                        }
+                    }
+
+                    const avgDiff = sampleCount > 0 ? (diffSum / sampleCount) : 0;
+                    motionEnergy = Math.min(100, Math.round((avgDiff / 25) * 100));
+
+                    videoMotionFill.style.width = `${motionEnergy}%`;
+                    videoMotionVal.textContent = `${motionEnergy}%`;
+
+                    const lipThresh = parseInt(lipThreshSlider.value, 10);
+                    isLipMoving = motionEnergy >= lipThresh;
+
+                    // HUD Box
+                    const hudX = motionCanvas.width * 0.30;
+                    const hudY = motionCanvas.height * 0.45;
+                    const hudW = motionCanvas.width * 0.40;
+                    const hudH = motionCanvas.height * 0.40;
+
+                    hudCtx.strokeStyle = isLipMoving ? '#10b981' : (isSpeaking ? '#ef4444' : '#6366f1');
+                    hudCtx.lineWidth = 2;
+                    hudCtx.strokeRect(hudX, hudY, hudW, hudH);
+
+                    hudCtx.font = '10px JetBrains Mono';
+                    hudCtx.fillStyle = hudCtx.strokeStyle;
+                    hudCtx.fillText(`LIP MOTION: ${motionEnergy}% [${isLipMoving ? 'ACTIVE' : 'STATIC'}]`, hudX, hudY - 6);
+
+                    // Sync & Mismatch Accumulator
+                    if (isSpeaking && !isLipMoving) {
+                        mismatchAccumulatorSec += 0.2;
+                    }
+
+                    const displaySec = mismatchAccumulatorSec.toFixed(1);
+                    mismatchVal.textContent = `${displaySec}s`;
+                    const mismatchPercent = Math.min(100, (mismatchAccumulatorSec / VIOLATION_THRESHOLD_SEC) * 100);
+                    mismatchFill.style.width = `${mismatchPercent}%`;
+
+                    if (mismatchAccumulatorSec >= VIOLATION_THRESHOLD_SEC) {
+                        violationsCount++;
+                        statViolationsCount.textContent = violationsCount;
+                        log(`⚠️ VIOLATION: Voice without lip movement >= ${VIOLATION_THRESHOLD_SEC}s! Total: ${violationsCount}`, 'log-danger');
+
+                        violationBanner.style.display = 'flex';
+                        setTimeout(() => { violationBanner.style.display = 'none'; }, 4000);
+                        mismatchAccumulatorSec = 0.0;
+                    }
+                }
+
+                prevFrameData = new Uint8ClampedArray(data);
+            }, 200);
+        }
+
+        // Live Proctoring Frame Sender (POST /api/interview/analyze-image)
+        async function sendParallelProctorFrame() {
+            if (!mediaStream || liveWebcam.videoWidth === 0 || !sendLiveFramesToggle.checked) return;
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 320;
+                canvas.height = 240;
+                const ctx = canvas.getContext('2d');
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(liveWebcam, 0, 0, canvas.width, canvas.height);
+                const b64 = canvas.toDataURL('image/jpeg', 0.5);
+
+                const host = window.location.origin.startsWith('http') ? window.location.origin : 'http://127.0.0.1:5002';
+                const sessionId = sessionIdInput.value.trim();
+
+                fetch(`${host}/api/interview/analyze-image`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        interview_session_id: sessionId,
+                        image_base64: b64,
+                        audio_detected: isSpeaking,
+                        is_speaking: isSpeaking
+                    })
+                }).catch(() => {});
+            } catch (_) {}
+        }
+
+        // Camera & Mic Controls
+        camBtn.addEventListener('click', async () => {
+            if (mediaStream) {
+                // Stop Camera
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+                liveWebcam.srcObject = null;
+
+                if (audioContext) { audioContext.close(); audioContext = null; }
+                if (audioLoopId) cancelAnimationFrame(audioLoopId);
+                if (videoAnalysisInterval) clearInterval(videoAnalysisInterval);
+                if (liveFrameSenderTimer) clearInterval(liveFrameSenderTimer);
+
+                camBtn.innerHTML = `
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path></svg>
+                    Start Camera & Mic
+                `;
+                camBtn.classList.remove('stop');
+                recBtn.disabled = true;
+
+                statusBadge.textContent = 'Camera Idle';
+                statusBadge.className = 'status-pill status-idle';
+                log('Camera & microphone stopped.', 'log-warn');
+                return;
+            }
+
+            try {
+                log('Requesting access to camera and microphone...');
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+                    audio: true
+                });
+                liveWebcam.srcObject = mediaStream;
+
+                setupAudioAnalysis(mediaStream);
+                setupVideoAnalysis();
+
+                camBtn.innerHTML = `
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    Stop Camera & Mic
+                `;
+                camBtn.classList.add('stop');
+                recBtn.disabled = false;
+
+                statusBadge.textContent = 'Camera Live (Ready)';
+                statusBadge.className = 'status-pill status-active';
+                log('Camera & mic connected! Ready for multi-question recording.', 'log-success');
+
+            } catch (err) {
+                alert('Could not access camera/mic: ' + err.message);
+                log('Device error: ' + err.message, 'log-danger');
+            }
+        });
+
+        // Record Answer for Current Question
+        recBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                // Stop Recording Current Question
+                mediaRecorder.stop();
+                return;
+            }
+
+            // Start Recording Current Question
+            recordedChunks = [];
+            currentRecordedBlob = null;
+            statFileSize.textContent = '0 KB';
+
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+                ? 'video/webm;codecs=vp8,opus'
+                : 'video/webm';
+
+            try {
+                mediaRecorder = new MediaRecorder(mediaStream, { mimeType });
+            } catch (e) {
+                mediaRecorder = new MediaRecorder(mediaStream);
+            }
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                currentRecordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+                recordedAnswers[currentQuestionIndex] = currentRecordedBlob;
+
+                playbackVideo.src = URL.createObjectURL(currentRecordedBlob);
+
+                const kb = Math.round(currentRecordedBlob.size / 1024);
+                statFileSize.textContent = kb > 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${kb} KB`;
+
+                if (recTimer) clearInterval(recTimer);
+                if (liveFrameSenderTimer) clearInterval(liveFrameSenderTimer);
+
+                recBtn.innerHTML = `
+                    <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle></svg>
+                    Re-Record Answer (Q${currentQuestionIndex})
+                `;
+                recBtn.classList.remove('stop');
+                liveDot.style.display = 'none';
+                liveBoxLabel.textContent = 'LIVE CAMERA';
+
+                statusBadge.textContent = `Q${currentQuestionIndex} Recorded (Ready to Submit)`;
+                statusBadge.className = 'status-pill status-active';
+                uploadBtn.disabled = false;
+                downloadBtn.disabled = false;
+
+                log(`Finished recording answer for Question ${currentQuestionIndex} (${(currentRecordedBlob.size / 1024).toFixed(1)} KB). Ready to submit.`, 'log-success');
+            };
+
+            mediaRecorder.start(1000);
+            recStartTime = Date.now();
+            recTimer = setInterval(() => {
+                const elapsedSec = Math.floor((Date.now() - recStartTime) / 1000);
+                const mm = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+                const ss = String(elapsedSec % 60).padStart(2, '0');
+                statRecTime.textContent = `${mm}:${ss}`;
+            }, 500);
+
+            // Parallel live frames
+            liveFrameSenderTimer = setInterval(sendParallelProctorFrame, 2000);
+
+            recBtn.innerHTML = `
+                <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+                Stop Recording (Q${currentQuestionIndex})
+            `;
+            recBtn.classList.add('stop');
+            liveDot.style.display = 'inline-block';
+            liveBoxLabel.textContent = `RECORDING Q${currentQuestionIndex}`;
+            uploadBtn.disabled = true;
+            downloadBtn.disabled = true;
+
+            statusBadge.textContent = `Recording Answer Q${currentQuestionIndex}...`;
+            statusBadge.className = 'status-pill status-recording';
+            log(`Recording started for Question ${currentQuestionIndex}...`, 'log-warn');
+        });
+
+        // Submit Answer & Auto-Advance to Next Question
+        uploadBtn.addEventListener('click', async () => {
+            if (!currentRecordedBlob) {
+                alert(`No recorded answer found for Question ${currentQuestionIndex}. Please record first.`);
+                return;
+            }
+
+            const apiUrl = apiUrlInput.value.trim();
+            const sessionId = sessionIdInput.value.trim();
+            const qIdx = currentQuestionIndex;
+            const isFinal = isFinalToggle.checked;
+
+            const formData = new FormData();
+            formData.append('interview_session_id', sessionId);
+            formData.append('question_index', qIdx.toString());
+            formData.append('video', currentRecordedBlob, `answer_q${qIdx}.webm`);
+            formData.append('is_final', isFinal ? 'true' : 'false');
+
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = `Uploading Q${qIdx} Answer to MinIO...`;
+            log(`Submitting Q${qIdx} video answer (is_final=${isFinal}) to ${apiUrl}...`, 'log-info');
+
+            const t0 = performance.now();
+            try {
+                const res = await fetch(apiUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const elapsed = Math.round(performance.now() - t0);
+                const data = await res.json().catch(() => ({}));
+
+                if (res.ok) {
+                    recordedAnswers[qIdx + '_submitted'] = true;
+                    renderStepPills();
+
+                    log(`✅ Q${qIdx} Submitted Successfully (${elapsed}ms): Queued for Whisper & Lip Tracking analysis.`, 'log-success');
+                    log(`Response: ${JSON.stringify(data)}`, 'log-info');
+
+                    if (isFinal) {
+                        statusBadge.textContent = `Interview Completed! All Answers Submitted.`;
+                        statusBadge.className = 'status-pill status-active';
+                        alert(`🎉 Congratulations! Question ${qIdx} (FINAL) submitted. Full interview is now evaluating in background!`);
+                    } else {
+                        statusBadge.textContent = `Q${qIdx} Submitted Successfully`;
+                        statusBadge.className = 'status-pill status-active';
+
+                        // Auto Advance to Next Question
+                        if (autoAdvanceToggle.checked && qIdx < questionsList.length) {
+                            setTimeout(() => {
+                                selectQuestion(qIdx + 1);
+                                log(`👉 Auto-advanced to Question ${qIdx + 1}. You can now start recording answer.`, 'log-warn');
+                            }, 800);
+                        }
+                    }
+                } else {
+                    log(`❌ API Error (${res.status}): ${data.detail || res.statusText}`, 'log-danger');
+                    alert(`Submission failed: ${data.detail || res.statusText}`);
+                }
+            } catch (err) {
+                log(`Network error: ${err.message}`, 'log-danger');
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = `
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.5V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"></path></svg>
+                    Submit Video Answer (Q${qIdx}) & Next
+                `;
+            }
+        });
+
+        // Download Video
+        downloadBtn.addEventListener('click', () => {
+            if (!currentRecordedBlob) return;
+            const url = URL.createObjectURL(currentRecordedBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `candidate_answer_q${currentQuestionIndex}.webm`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            log(`Downloaded candidate_answer_q${currentQuestionIndex}.webm locally`, 'log-success');
+        });
+
+        // Session Dropdown & Auto Loader
+        const sessionDropdown = document.getElementById('sessionDropdown');
+        const refreshSessionsBtn = document.getElementById('refreshSessionsBtn');
+
+        async function loadActiveSessions() {
+            sessionDropdown.innerHTML = '<option value="">Loading active sessions...</option>';
+            const host = window.location.origin.startsWith('http') ? window.location.origin : 'http://127.0.0.1:5002';
+            try {
+                const res = await fetch(`${host}/api/interview/active-sessions`);
+                if (res.ok) {
+                    const list = await res.json();
+                    sessionDropdown.innerHTML = '';
+                    if (list.length === 0) {
+                        sessionDropdown.innerHTML = '<option value="">No sessions found</option>';
+                        return;
+                    }
+                    list.forEach((s, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = s.interview_session_id;
+                        opt.textContent = `ID #${s.id} - ${s.candidate_name} [${s.status}] (${s.interview_session_id.substring(0, 8)}...)`;
+                        sessionDropdown.appendChild(opt);
+                    });
+                    // Set first session as active
+                    sessionIdInput.value = list[0].interview_session_id;
+                    log(`Loaded ${list.length} recent sessions. Active: ID #${list[0].id}`, 'log-info');
+                } else {
+                    sessionDropdown.innerHTML = '<option value="75">Custom ID: 75 (Manual)</option>';
+                }
+            } catch (err) {
+                sessionDropdown.innerHTML = '<option value="75">Custom ID: 75 (Manual)</option>';
+            }
+        }
+
+        sessionDropdown.addEventListener('change', (e) => {
+            if (e.target.value) {
+                sessionIdInput.value = e.target.value;
+                log(`Active session set to: ${e.target.value}`, 'log-info');
+            }
+        });
+
+        refreshSessionsBtn.addEventListener('click', () => {
+            loadActiveSessions();
+        });
+
+        // Initialize view & sessions
+        selectQuestion(1);
+        loadActiveSessions();
+    </script>
+</body>
+</html>

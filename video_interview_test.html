@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Answer Recording & Parallel Analysis Test</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #080c18;
+            --bg-secondary: #0f172a;
+            --bg-tertiary: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-primary: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.2);
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --font-sans: 'Plus Jakarta Sans', sans-serif;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 25px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.10) 0px, transparent 50%);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            max-width: 750px;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: 2.1rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0 0 6px 0;
+            letter-spacing: -0.02em;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin: 0;
+            line-height: 1.4;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 22px;
+            max-width: 1150px;
+            width: 100%;
+        }
+
+        @media (max-width: 960px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            padding: 20px;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .media-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 600px) {
+            .media-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .video-box {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            background-color: #030712;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #liveWebcam {
+            transform: scaleX(-1);
+        }
+
+        .box-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(8px);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #cbd5e1;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            z-index: 5;
+        }
+
+        .rec-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--danger);
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        .status-pill {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-idle {
+            background-color: rgba(148, 163, 184, 0.12);
+            color: #cbd5e1;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+        }
+
+        .status-recording {
+            background-color: rgba(239, 68, 68, 0.18);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.35);
+        }
+
+        .status-success {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .control-group {
+            margin-bottom: 14px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        input[type="text"], input[type="number"], select {
+            width: 100%;
+            padding: 9px 12px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        .mic-meter-bar {
+            height: 10px;
+            width: 100%;
+            background-color: var(--bg-tertiary);
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .mic-meter-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+            transition: width 0.08s ease;
+        }
+
+        .btn-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-family: var(--font-sans);
+            font-weight: 600;
+            font-size: 0.90rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35);
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+        }
+
+        button.stop {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.35);
+        }
+
+        button.upload {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);
+        }
+
+        button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .stat-box {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .stat-box .val {
+            font-family: var(--font-mono);
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #818cf8;
+        }
+
+        .stat-box .lbl {
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .log-terminal {
+            background-color: #030712;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px;
+            font-family: var(--font-mono);
+            font-size: 0.74rem;
+            color: #cbd5e1;
+            height: 140px;
+            overflow-y: auto;
+        }
+
+        .log-line {
+            margin-bottom: 4px;
+            line-height: 1.35;
+        }
+        .log-success { color: #34d399; }
+        .log-error { color: #f87171; }
+        .log-warn { color: #fbbf24; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>AI Video Answer Recording & Proctoring Test</h1>
+        <p class="subtitle">Record candidate video answers, monitor audio/lip activity in parallel, and submit to <code>POST /api/interview/submit-video-answer</code>.</p>
+    </div>
+
+    <div class="dashboard">
+        <!-- Main Video Panel -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-weight: 600; font-size: 1rem;">Video Feeds</span>
+                <div id="statusBadge" class="status-pill status-idle">Camera Idle</div>
+            </div>
+
+            <div class="media-grid">
+                <!-- Live Preview -->
+                <div class="video-box">
+                    <div class="box-label">
+                        <div id="liveDot" class="rec-dot" style="display: none;"></div>
+                        <span id="liveBoxLabel">LIVE CAMERA</span>
+                    </div>
+                    <video id="liveWebcam" autoplay playsinline muted></video>
+                </div>
+
+                <!-- Recorded Video Playback -->
+                <div class="video-box">
+                    <div class="box-label"><span>RECORDED PLAYBACK</span></div>
+                    <video id="playbackVideo" controls playsinline></video>
+                </div>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div id="statRecTime" class="val">00:00</div>
+                    <div class="lbl">REC TIME</div>
+                </div>
+                <div class="stat-box">
+                    <div id="statFileSize" class="val">0 KB</div>
+                    <div class="lbl">VIDEO SIZE</div>
+                </div>
+                <div class="stat-box">
+                    <div id="statMicStatus" class="val">SILENT</div>
+                    <div class="lbl">MIC VOICE</div>
+                </div>
+                <div class="stat-box">
+                    <div id="statLiveFrames" class="val">0</div>
+                    <div class="lbl">LIVE FRAMES SENT</div>
+                </div>
+            </div>
+
+            <!-- Log Terminal -->
+            <div class="log-terminal" id="logTerminal">
+                <div class="log-line">[System] Ready. Click "Start Camera & Mic" to begin.</div>
+            </div>
+        </div>
+
+        <!-- Sidebar Controls -->
+        <div class="card">
+            <div class="control-group">
+                <label for="apiUrl">Video Submission Endpoint (POST)</label>
+                <input type="text" id="apiUrl" value="http://127.0.0.1:5002/api/interview/submit-video-answer">
+            </div>
+
+            <div class="control-group">
+                <label for="sessionId">Interview Session ID</label>
+                <input type="text" id="sessionId" value="75">
+            </div>
+
+            <div class="control-group">
+                <label for="questionIndex">Question Index</label>
+                <input type="number" id="questionIndex" value="1" min="1" max="20">
+            </div>
+
+            <!-- Mic Activity Level -->
+            <div class="control-group">
+                <label>Microphone Activity Level</label>
+                <div class="mic-meter-bar">
+                    <div id="micFill" class="mic-meter-fill"></div>
+                </div>
+            </div>
+
+            <div class="btn-grid">
+                <button id="camBtn">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path></svg>
+                    Start Camera & Mic
+                </button>
+
+                <button id="recBtn" disabled>
+                    <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle></svg>
+                    Start Recording Answer
+                </button>
+
+                <button id="uploadBtn" class="upload" disabled>
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.5V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"></path></svg>
+                    Submit Video Answer (API)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const camBtn = document.getElementById('camBtn');
+        const recBtn = document.getElementById('recBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+
+        const apiUrlInput = document.getElementById('apiUrl');
+        const sessionIdInput = document.getElementById('sessionId');
+        const questionIndexInput = document.getElementById('questionIndex');
+
+        const liveWebcam = document.getElementById('liveWebcam');
+        const playbackVideo = document.getElementById('playbackVideo');
+        const statusBadge = document.getElementById('statusBadge');
+        const liveDot = document.getElementById('liveDot');
+        const liveBoxLabel = document.getElementById('liveBoxLabel');
+        const micFill = document.getElementById('micFill');
+        const logTerminal = document.getElementById('logTerminal');
+
+        const statRecTime = document.getElementById('statRecTime');
+        const statFileSize = document.getElementById('statFileSize');
+        const statMicStatus = document.getElementById('statMicStatus');
+        const statLiveFrames = document.getElementById('statLiveFrames');
+
+        if (window.location.protocol && window.location.protocol.startsWith('http')) {
+            apiUrlInput.value = `${window.location.origin}/api/interview/submit-video-answer`;
+        }
+
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let recordedBlob = null;
+
+        let audioContext = null;
+        let analyser = null;
+        let micDataArray = null;
+        let micInterval = null;
+
+        let liveFrameInterval = null;
+        let framesSentCount = 0;
+
+        let recStartTime = null;
+        let recTimer = null;
+        let isSpeaking = false;
+
+        function log(msg, type = '') {
+            const el = document.createElement('div');
+            el.className = `log-line ${type}`;
+            const time = new Date().toLocaleTimeString();
+            el.textContent = `[${time}] ${msg}`;
+            logTerminal.appendChild(el);
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+        }
+
+        // Live Audio Meter setup
+        function setupAudioAnalyser(stream) {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                micDataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                micInterval = setInterval(() => {
+                    if (!analyser) return;
+                    analyser.getByteFrequencyData(micDataArray);
+                    let sum = 0;
+                    for (let i = 0; i < micDataArray.length; i++) sum += micDataArray[i];
+                    const avg = sum / micDataArray.length;
+                    const percent = Math.min(100, Math.round((avg / 55) * 100));
+                    micFill.style.width = `${percent}%`;
+
+                    isSpeaking = percent >= 15;
+                    if (isSpeaking) {
+                        statMicStatus.textContent = `SPEAKING (${percent}%)`;
+                        statMicStatus.style.color = '#34d399';
+                    } else {
+                        statMicStatus.textContent = 'SILENT';
+                        statMicStatus.style.color = '#818cf8';
+                    }
+                }, 100);
+            } catch (err) {
+                console.warn('Audio analyser error:', err);
+            }
+        }
+
+        // Send parallel live proctoring frames while recording
+        async function sendParallelProctorFrame() {
+            if (!mediaStream || liveWebcam.videoWidth === 0) return;
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 320;
+                canvas.height = 240;
+                const ctx = canvas.getContext('2d');
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(liveWebcam, 0, 0, canvas.width, canvas.height);
+                const b64 = canvas.toDataURL('image/jpeg', 0.5);
+
+                const host = window.location.origin.startsWith('http') ? window.location.origin : 'http://127.0.0.1:5002';
+                const sessionId = sessionIdInput.value.trim();
+
+                fetch(`${host}/api/interview/analyze-image`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        interview_session_id: sessionId,
+                        image_base64: b64,
+                        audio_detected: isSpeaking,
+                        is_speaking: isSpeaking
+                    })
+                }).then(res => {
+                    if (res.status === 202) {
+                        framesSentCount++;
+                        statLiveFrames.textContent = framesSentCount;
+                    }
+                }).catch(() => {});
+            } catch (_) {}
+        }
+
+        // Start Camera & Mic
+        camBtn.addEventListener('click', async () => {
+            if (mediaStream) {
+                // Stop camera
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+                liveWebcam.srcObject = null;
+                if (audioContext) audioContext.close();
+                if (micInterval) clearInterval(micInterval);
+                if (liveFrameInterval) clearInterval(liveFrameInterval);
+
+                camBtn.innerHTML = 'Start Camera & Mic';
+                camBtn.classList.remove('stop');
+                recBtn.disabled = true;
+                uploadBtn.disabled = true;
+                statusBadge.textContent = 'Camera Idle';
+                statusBadge.className = 'status-pill status-idle';
+                log('Camera and microphone stopped.', 'log-warn');
+                return;
+            }
+
+            try {
+                log('Requesting camera & microphone permissions...');
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+                    audio: true
+                });
+                liveWebcam.srcObject = mediaStream;
+
+                setupAudioAnalyser(mediaStream);
+
+                camBtn.innerHTML = 'Stop Camera & Mic';
+                camBtn.classList.add('stop');
+                recBtn.disabled = false;
+                statusBadge.textContent = 'Camera Live (Ready)';
+                statusBadge.className = 'status-pill status-success';
+                log('Camera & microphone ready! You can now record answer.', 'log-success');
+
+            } catch (err) {
+                alert('Could not access camera/mic: ' + err.message);
+                log('Permission denied: ' + err.message, 'log-error');
+            }
+        });
+
+        // Record Answer
+        recBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                // Stop recording
+                mediaRecorder.stop();
+                return;
+            }
+
+            // Start recording
+            recordedChunks = [];
+            recordedBlob = null;
+            statFileSize.textContent = '0 KB';
+
+            const options = { mimeType: 'video/webm;codecs=vp8,opus' };
+            try {
+                mediaRecorder = new MediaRecorder(mediaStream, options);
+            } catch (e) {
+                mediaRecorder = new MediaRecorder(mediaStream);
+            }
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                recordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+                const blobUrl = URL.createObjectURL(recordedBlob);
+                playbackVideo.src = blobUrl;
+
+                const kb = Math.round(recordedBlob.size / 1024);
+                statFileSize.textContent = kb > 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${kb} KB`;
+
+                if (recTimer) clearInterval(recTimer);
+                if (liveFrameInterval) clearInterval(liveFrameInterval);
+
+                recBtn.innerHTML = 'Start Recording Answer';
+                recBtn.classList.remove('stop');
+                liveDot.style.display = 'none';
+                liveBoxLabel.textContent = 'LIVE CAMERA';
+
+                statusBadge.textContent = 'Recording Finished';
+                statusBadge.className = 'status-pill status-success';
+                uploadBtn.disabled = false;
+
+                log(`Recording finished (${(recordedBlob.size / 1024).toFixed(1)} KB). Ready to submit.`, 'log-success');
+            };
+
+            mediaRecorder.start(1000); // 1s slice
+            recStartTime = Date.now();
+            recTimer = setInterval(() => {
+                const elapsedSec = Math.floor((Date.now() - recStartTime) / 1000);
+                const mm = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+                const ss = String(elapsedSec % 60).padStart(2, '0');
+                statRecTime.textContent = `${mm}:${ss}`;
+            }, 500);
+
+            // Start parallel live frame sender (1 frame / 2s)
+            liveFrameInterval = setInterval(sendParallelProctorFrame, 2000);
+
+            recBtn.innerHTML = 'Stop Recording Answer';
+            recBtn.classList.add('stop');
+            liveDot.style.display = 'inline-block';
+            liveBoxLabel.textContent = 'RECORDING';
+            uploadBtn.disabled = true;
+
+            statusBadge.textContent = 'Recording Video Answer...';
+            statusBadge.className = 'status-pill status-recording';
+            log('Recording started (Video + Audio)...', 'log-warn');
+        });
+
+        // Submit Video Answer to API
+        uploadBtn.addEventListener('click', async () => {
+            if (!recordedBlob) {
+                alert('No recorded video found. Please record an answer first.');
+                return;
+            }
+
+            const apiUrl = apiUrlInput.value.trim();
+            const sessionId = sessionIdInput.value.trim();
+            const qIndex = questionIndexInput.value.trim();
+
+            const formData = new FormData();
+            formData.append('interview_session_id', sessionId);
+            formData.append('question_index', qIndex);
+            formData.append('video', recordedBlob, `answer_q${qIndex}.webm`);
+            formData.append('is_final', 'false');
+
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = 'Uploading to MinIO...';
+            log(`Submitting video answer Q${qIndex} to ${apiUrl}...`);
+
+            const t0 = performance.now();
+            try {
+                const res = await fetch(apiUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const elapsed = Math.round(performance.now() - t0);
+                const data = await res.json().catch(() => ({}));
+
+                if (res.ok) {
+                    log(`Success (${elapsed}ms): ${JSON.stringify(data)}`, 'log-success');
+                    statusBadge.textContent = `Q${qIndex} Submitted (Processing)`;
+                    statusBadge.className = 'status-pill status-success';
+                    alert(`Video Answer Q${qIndex} successfully uploaded and queued for AI analysis!`);
+                } else {
+                    log(`API Error (${res.status}): ${data.detail || res.statusText}`, 'log-error');
+                    statusBadge.textContent = `Upload Error (${res.status})`;
+                    statusBadge.className = 'status-pill status-idle';
+                    alert(`Upload failed: ${data.detail || res.statusText}`);
+                }
+            } catch (err) {
+                log(`Network error: ${err.message}`, 'log-error');
+                statusBadge.textContent = 'Network Error';
+                statusBadge.className = 'status-pill status-idle';
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = 'Submit Video Answer (API)';
+            }
+        });
+    </script>
+</body>
+</html>

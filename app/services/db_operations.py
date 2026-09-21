@@ -635,6 +635,177 @@ def upsert_pending_answer(
         return {"success": False, "error": "An internal server error occurred."}
 
 
+def create_pending_video_answers(
+    session: Session,
+    interview_session_id: str,
+    video_paths: Dict[str, str],
+    audio_paths: Optional[Dict[str, str]] = None,
+):
+    """Store video and optional audio paths for batch submitted video answers."""
+    try:
+        interview_analysis = session.exec(
+            select(models.InterviewAnalysis)
+            .join(
+                models.InterviewSessions,
+                models.InterviewAnalysis.interview_session_id
+                == models.InterviewSessions.interview_session_id,
+            )
+            .where(
+                models.InterviewSessions.interview_session_id == interview_session_id
+            )
+        ).first()
+
+        if not interview_analysis:
+            return {"success": False, "error": "Interview analysis not found"}
+
+        for question_index, video_path in video_paths.items():
+            try:
+                idx = int(question_index) - 1
+                question_db_id = None
+                if 0 <= idx < len(interview_analysis.questions):
+                    question_obj = interview_analysis.questions[idx]
+                    if isinstance(question_obj, dict):
+                        question_text = question_obj.get("question", "")
+                        question_db_id = question_obj.get("question_id")
+                    else:
+                        question_text = str(question_obj)
+                else:
+                    question_text = "Unknown Question"
+            except Exception:
+                question_text = "Unknown Question"
+                question_db_id = None
+
+            audio_path = (audio_paths or {}).get(question_index, "")
+            if audio_path:
+                answer_marker = f"VIDEO_PENDING:{video_path}|{audio_path}"
+            else:
+                answer_marker = f"VIDEO_PENDING:{video_path}"
+
+            qna_analysis = models.QNA_Analysis(
+                application_id=interview_analysis.application_id,
+                interview_analysis_id=interview_analysis.id,
+                question_id=question_db_id,
+                question_text=question_text,
+                answer_text=answer_marker,
+                ai_analysis=None,
+            )
+            logger.info(f"Created pending video QNA entry: {qna_analysis.answer_text}")
+            session.add(qna_analysis)
+
+        session.commit()
+        logger.info(f"Pending video answers created for session {interview_session_id}")
+        return {"success": True}
+    except Exception as err:
+        logger.error(f"Error creating pending video answers: {err}")
+        return {"success": False, "error": "An internal server error occurred."}
+
+
+def upsert_pending_video_answer(
+    session: Session,
+    interview_session_id: str,
+    question_index: int,
+    video_path: str,
+    audio_path: Optional[str] = None,
+):
+    """Create or replace the pending video QNA row for a single question."""
+    try:
+        interview_analysis = session.exec(
+            select(models.InterviewAnalysis)
+            .join(
+                models.InterviewSessions,
+                models.InterviewAnalysis.interview_session_id
+                == models.InterviewSessions.interview_session_id,
+            )
+            .where(
+                models.InterviewSessions.interview_session_id == interview_session_id
+            )
+        ).first()
+
+        if not interview_analysis:
+            return {"success": False, "error": "Interview analysis not found"}
+
+        question_text = "Unknown Question"
+        question_db_id = None
+        try:
+            idx = int(question_index) - 1
+            if 0 <= idx < len(interview_analysis.questions):
+                question_obj = interview_analysis.questions[idx]
+                if isinstance(question_obj, dict):
+                    question_text = (
+                        question_obj.get("question", "") or "Unknown Question"
+                    )
+                    question_db_id = question_obj.get("question_id")
+                else:
+                    question_text = str(question_obj)
+        except Exception:
+            pass
+
+        existing_rows = session.exec(
+            select(models.QNA_Analysis).where(
+                models.QNA_Analysis.interview_analysis_id == interview_analysis.id,
+                models.QNA_Analysis.is_deleted == False,
+            )
+        ).all()
+
+        existing = None
+        for row in existing_rows:
+            if question_db_id is not None:
+                if row.question_id == question_db_id:
+                    existing = row
+                    break
+            elif row.question_text == question_text:
+                existing = row
+                break
+
+        if audio_path:
+            answer_marker = f"VIDEO_PENDING:{video_path}|{audio_path}"
+        else:
+            answer_marker = f"VIDEO_PENDING:{video_path}"
+
+        if existing is not None:
+            analysis = existing.ai_analysis or {}
+            if isinstance(analysis, dict) and analysis.get("status") in (
+                "processing",
+                "completed",
+            ):
+                logger.info(
+                    f"[submit-video-answer] Q{question_index} already "
+                    f"{analysis.get('status')}, ignoring re-submit for "
+                    f"session {interview_session_id}"
+                )
+                return {"success": True, "skipped": "already processed"}
+            existing.answer_text = answer_marker
+            existing.ai_analysis = None
+            session.add(existing)
+        else:
+            session.add(
+                models.QNA_Analysis(
+                    application_id=interview_analysis.application_id,
+                    interview_analysis_id=interview_analysis.id,
+                    question_id=question_db_id,
+                    question_text=question_text,
+                    answer_text=answer_marker,
+                    ai_analysis=None,
+                )
+            )
+
+        if interview_analysis.status == models.StatusEnum.not_started:
+            interview_analysis.status = models.StatusEnum.in_progress
+            session.add(interview_analysis)
+
+        session.commit()
+        logger.info(
+            f"[submit-video-answer] pending video answer stored for Q{question_index}, "
+            f"session {interview_session_id}"
+        )
+        return {"success": True}
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Error upserting pending video answer: {err}")
+        return {"success": False, "error": "An internal server error occurred."}
+
+
+
 def mark_interview_completed(session: Session, interview_session_id: str):
     """Flip InterviewAnalysis + InterviewSessions to completed."""
     try:

@@ -16,8 +16,9 @@ try:
         DATABASE_URL,
         echo=False,
         connect_args=connect_args,
-        pool_size=50,
-        max_overflow=20,
+        pool_size=15,
+        max_overflow=10,
+        pool_recycle=300,
         pool_pre_ping=True,
     )
     logger.debug(f"Database engine created successfully")

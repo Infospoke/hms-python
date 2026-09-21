@@ -281,6 +281,43 @@ def delete_object(object_name):
         return {"success": False, "error": f"Failed to delete object from MinIO: {e}"}
 
 
+def upload_video(video_bytes, object_name, content_type="video/mp4"):
+    """Upload raw video bytes to MinIO under the given content type."""
+    bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
+    ensure_bucket_exists(bucket_name)
+    logger.info(f"MinIO: uploading video as '{object_name}' ({content_type})")
+    try:
+        minio_client = get_minio_client()
+        minio_client.put_object(
+            bucket_name,
+            object_name,
+            data=BytesIO(video_bytes),
+            length=len(video_bytes),
+            content_type=content_type,
+        )
+        minio_url = f"http://{consts.MINIO_HOST}/{bucket_name}/{object_name}"
+        logger.info(f"MinIO: successfully uploaded video to {minio_url}")
+        return {"success": True, "s3_url": minio_url}
+    except Exception as e:
+        logger.error(f"MinIO: error uploading video '{object_name}': {e}")
+        return {"success": False, "error": f"Failed to upload video to MinIO: {e}"}
+
+
+def get_video_bytes(object_name):
+    """Retrieve video bytes from MinIO."""
+    bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
+    logger.info(f"MinIO: fetching video '{object_name}'")
+    try:
+        minio_client = get_minio_client()
+        response = minio_client.get_object(bucket_name, object_name)
+        video_bytes = response.read()
+        logger.info(f"MinIO: successfully fetched video '{object_name}'")
+        return {"success": True, "video_bytes": video_bytes}
+    except Exception as e:
+        logger.error(f"MinIO: error fetching video '{object_name}': {e}")
+        return {"success": False, "error": f"Failed to fetch video from MinIO: {e}"}
+
+
 def upload_image_to_s3(image_bytes, object_name):
     return upload_image(image_bytes, object_name)
 
@@ -293,9 +330,18 @@ def get_audio_bytes_from_s3(object_name):
     return get_audio_bytes(object_name)
 
 
+def upload_video_to_s3(video_bytes, object_name, content_type="video/mp4"):
+    return upload_video(video_bytes, object_name, content_type=content_type)
+
+
+def get_video_bytes_from_s3(object_name):
+    return get_video_bytes(object_name)
+
+
 def delete_s3_object(object_name):
     return delete_object(object_name)
 
 
 def get_s3_image_base64(image_key):
     return get_image_base64(image_key)
+

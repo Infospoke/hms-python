@@ -21,10 +21,14 @@ logger = logging.getLogger(__name__)
 _proctoring_engine = None
 
 NO_FACE_CONSECUTIVE_THRESHOLD = 3
+VOICE_NO_LIP_DURATION_SECONDS = 3.0
 _SESSION_STATE_TTL_SECONDS = 3600
 
 _session_state_lock = threading.Lock()
 _session_no_face_counts = {}
+_session_voice_no_lip_accumulated = {}
+_session_voice_no_lip_last_ts = {}
+_session_legit_speech_counts = {}
 _session_last_seen = {}
 _calls_since_cleanup = 0
 _CLEANUP_EVERY_N_CALLS = 200
@@ -39,6 +43,9 @@ def _cleanup_stale_sessions_locked(now: float) -> None:
     for sid in stale:
         _session_last_seen.pop(sid, None)
         _session_no_face_counts.pop(sid, None)
+        _session_voice_no_lip_accumulated.pop(sid, None)
+        _session_voice_no_lip_last_ts.pop(sid, None)
+        _session_legit_speech_counts.pop(sid, None)
 
 
 def _register_no_face_miss(interview_session_id: str) -> bool:
@@ -61,6 +68,62 @@ def _reset_no_face_state(interview_session_id: str) -> None:
     with _session_state_lock:
         _session_no_face_counts.pop(interview_session_id, None)
         _session_last_seen[interview_session_id] = time.time()
+
+
+def _register_voice_no_lip(interview_session_id: str) -> bool:
+    """Record a 'Voice Detected Without Lip Movement' frame for this session.
+    Accumulates mismatch duration across sentences, triggers once threshold is reached,
+    and auto-resets the accumulator so subsequent frames do not continuously flood violations."""
+    global _calls_since_cleanup
+    now = time.time()
+    with _session_state_lock:
+        _session_last_seen[interview_session_id] = now
+        _session_legit_speech_counts[interview_session_id] = 0
+
+        last_ts = _session_voice_no_lip_last_ts.get(interview_session_id)
+        if last_ts is not None:
+            # Add delta time between frames, capped at 1.5s per frame
+            dt = max(0.1, min(1.5, now - last_ts))
+        else:
+            dt = 0.5
+
+        current_acc = _session_voice_no_lip_accumulated.get(interview_session_id, 0.0) + dt
+        _session_voice_no_lip_accumulated[interview_session_id] = current_acc
+        _session_voice_no_lip_last_ts[interview_session_id] = now
+
+        _calls_since_cleanup += 1
+        if _calls_since_cleanup >= _CLEANUP_EVERY_N_CALLS:
+            _calls_since_cleanup = 0
+            _cleanup_stale_sessions_locked(now)
+
+        if current_acc >= VOICE_NO_LIP_DURATION_SECONDS:
+            # Auto-reset accumulator after triggering so it begins fresh for the next incident
+            _session_voice_no_lip_accumulated[interview_session_id] = 0.0
+            _session_voice_no_lip_last_ts.pop(interview_session_id, None)
+            return True
+
+    return False
+
+
+
+def _handle_voice_ok_or_silent(interview_session_id: str, is_speaking_with_lips: bool) -> None:
+    """Holds accumulated mismatch time across pauses/sentences; only resets after
+    sustained legitimate speaking with lips moving."""
+    now = time.time()
+    with _session_state_lock:
+        _session_last_seen[interview_session_id] = now
+        if is_speaking_with_lips:
+            streak = _session_legit_speech_counts.get(interview_session_id, 0) + 1
+            _session_legit_speech_counts[interview_session_id] = streak
+            # Only reset after 8+ consecutive frames of legitimate speech
+            if streak >= 8:
+                _session_voice_no_lip_accumulated.pop(interview_session_id, None)
+                _session_voice_no_lip_last_ts.pop(interview_session_id, None)
+        else:
+            _session_legit_speech_counts[interview_session_id] = 0
+            # On silence, keep the accumulated mismatch time stored for the next sentence!
+            _session_voice_no_lip_last_ts.pop(interview_session_id, None)
+
 
 
 def _get_proctoring_engine():
@@ -134,8 +197,14 @@ def _process_message(payload: dict) -> None:
         )
         return
 
+    audio_detected = bool(
+        payload.get("audio_detected")
+        or payload.get("is_speaking")
+        or payload.get("speech_detected")
+    )
+
     engine_instance = _get_proctoring_engine()
-    result = engine_instance.analyze_frame(image)
+    result = engine_instance.analyze_frame(image, audio_detected=audio_detected)
 
     alerts = list(result.get("alerts") or [])
     if "No Face Detected" in alerts:
@@ -149,6 +218,23 @@ def _process_message(payload: dict) -> None:
             )
     else:
         _reset_no_face_state(interview_session_id)
+
+    is_lip_moving = result.get("metrics", {}).get("lip_movement", False)
+    is_legit_speaking = audio_detected and is_lip_moving
+
+    if "Voice Detected Without Lip Movement" in alerts:
+        if _register_voice_no_lip(interview_session_id):
+            pass
+        else:
+            alerts = [
+                a for a in alerts if a != "Voice Detected Without Lip Movement"
+            ]
+            logger.debug(
+                f"Worker: cumulative 'Voice Detected Without Lip Movement' for session {interview_session_id}: "
+                f"{_session_voice_no_lip_accumulated.get(interview_session_id, 0.0):.1f}s / {VOICE_NO_LIP_DURATION_SECONDS}s"
+            )
+    else:
+        _handle_voice_ok_or_silent(interview_session_id, is_legit_speaking)
 
     if alerts:
         with Session(engine) as session:

@@ -112,7 +112,12 @@ class AnalysisWorker(threading.Thread):
                 question_text = response_obj.question_text
                 existing_ai_analysis = response_obj.ai_analysis
 
+                interview_analysis = session.get(models.InterviewAnalysis, interview_analysis_id)
+                interview_session_id = interview_analysis.interview_session_id if interview_analysis else str(interview_analysis_id)
+
             audio_report = None
+            video_proctor_result = None
+
             if answer_text and answer_text.startswith("AUDIO_PENDING:"):
                 audio_path = answer_text.split("AUDIO_PENDING:")[1]
                 logger.info(
@@ -178,38 +183,248 @@ class AnalysisWorker(threading.Thread):
                             )
                     return
 
-            with Session(self.engine) as session:
-                context = db_operations.get_interview_context(
-                    session, interview_analysis_id
+            elif answer_text and answer_text.startswith("VIDEO_PENDING:"):
+                marker_content = answer_text.split("VIDEO_PENDING:")[1]
+                parts = marker_content.split("|")
+                video_s3_key = parts[0].strip()
+                audio_s3_key = parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+
+                logger.info(
+                    f"Found pending video for response {response_id}: video={video_s3_key}, audio={audio_s3_key}"
                 )
-                if not context:
-                    logger.error(f"Could not get context for response {response_id}")
-                    with Session(self.engine) as error_session:
-                        response_obj = error_session.get(
-                            models.QNA_Analysis, response_id
+
+                import base64
+                from app.services import minio_helper as aws_helper
+                import tempfile
+
+                video_bytes = None
+                if video_s3_key:
+                    s3_vid_res = aws_helper.get_video_bytes_from_s3(video_s3_key)
+                    if s3_vid_res.get("success"):
+                        video_bytes = s3_vid_res["video_bytes"]
+
+                if audio_s3_key:
+                    s3_audio_res = aws_helper.get_audio_bytes_from_s3(audio_s3_key)
+                    if s3_audio_res.get("success"):
+                        audio_bytes = s3_audio_res["audio_bytes"]
+                        audio_extension = os.path.splitext(audio_s3_key)[1] or ".wav"
+
+                if not audio_bytes and video_bytes:
+                    audio_bytes = video_bytes
+                    audio_extension = os.path.splitext(video_s3_key)[1] or ".webm"
+
+                if audio_bytes or video_bytes:
+                    temp_video_path = None
+                    try:
+                        if not hasattr(self, "confidence_monitor"):
+                            from app.services.ai_interviewer.confidence_monitor import (
+                                ConfidenceMonitor,
+                            )
+
+                            self.confidence_monitor = ConfidenceMonitor()
+
+                        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+                        # 1. Speech transcription & audio confidence report
+                        audio_report = asyncio.run(
+                            self.confidence_monitor.generate_comprehensive_report(
+                                base64_audio=audio_b64,
+                                audio_extension=audio_extension,
+                            )
                         )
+
+                        # 2. Video lip tracking & proctoring check
+                        if video_bytes:
+                            vid_ext = os.path.splitext(video_s3_key)[1] or ".webm"
+                            with tempfile.NamedTemporaryFile(suffix=vid_ext, delete=False) as tf:
+                                tf.write(video_bytes)
+                                temp_video_path = tf.name
+
+                            from app.services.ai_interviewer.proctoring import ProctoringEngine
+                            proctor_engine = ProctoringEngine()
+                            video_proctor_result = proctor_engine.analyze_video_answer(temp_video_path)
+                            logger.info(
+                                f"[analysis_worker] Video proctoring Q{response_id}: "
+                                f"lip_ratio={video_proctor_result.get('lip_movement_ratio')}, "
+                                f"face_ratio={video_proctor_result.get('face_detected_ratio')}, "
+                                f"violations={video_proctor_result.get('violations')}"
+                            )
+
+                            # Log all detected video proctoring violations into tb_proctoring_logs with snapshots
+                            detected_violations = video_proctor_result.get("violations", [])
+                            snapshots = video_proctor_result.get("violation_snapshots", {})
+
+                            if detected_violations:
+                                with Session(self.engine) as log_session:
+                                    from app.services.analyze_image_worker import _save_proctoring_violation
+                                    for viol in detected_violations:
+                                        try:
+                                            snap = None
+                                            if "Lip Movement" in viol:
+                                                snap = snapshots.get("proxy_speaking")
+                                            elif "Face Missing" in viol or "No Face" in viol:
+                                                snap = snapshots.get("no_face")
+                                            elif "Multiple People" in viol:
+                                                snap = snapshots.get("multiple_people")
+                                            elif "Cell Phone" in viol:
+                                                snap = snapshots.get("phone")
+                                            elif "Looking Away" in viol:
+                                                snap = snapshots.get("looking_away")
+                                            if snap is None and snapshots:
+                                                snap = list(snapshots.values())[0]
+
+                                            image_path = None
+                                            if snap is not None:
+                                                image_path = _save_proctoring_violation(
+                                                    interview_session_id,
+                                                    viol,
+                                                    snap,
+                                                    session=log_session,
+                                                )
+
+                                            sev = "high severity" if ("Lip Movement" in viol or "Multiple People" in viol or "Face Missing" in viol or "Cell Phone" in viol) else "medium severity"
+
+                                            proctor_log = models.ProctoringLogs(
+                                                interview_analysis_id=interview_analysis_id,
+                                                event_type=models.ProctoringEventType.visual_violation,
+                                                details=json.dumps([f"{viol} in Answer Recording"]),
+                                                image_path=image_path,
+                                                tb_severity=sev,
+                                            )
+                                            log_session.add(proctor_log)
+                                            log_session.commit()
+                                            logger.info(f"[analysis_worker] Logged proctoring violation '{viol}' for Q{response_id}")
+                                        except Exception as viol_err:
+                                            logger.error(f"[analysis_worker] Error logging violation '{viol}': {viol_err}")
+
+                        # 3. Delete processed video and audio objects from MinIO
+                        if video_s3_key:
+                            aws_helper.delete_s3_object(video_s3_key)
+                            logger.info(f"[analysis_worker] Deleted processed video from MinIO: {video_s3_key}")
+                        if audio_s3_key:
+                            aws_helper.delete_s3_object(audio_s3_key)
+                            logger.info(f"[analysis_worker] Deleted processed audio from MinIO: {audio_s3_key}")
+
+                        answer_text = audio_report.get("transcript", "")
+                    except Exception as e:
+                        logger.error(f"Error processing video media for {response_id}: {e}")
+                        if video_s3_key:
+                            aws_helper.delete_s3_object(video_s3_key)
+                        if audio_s3_key:
+                            aws_helper.delete_s3_object(audio_s3_key)
+
+                        with Session(self.engine) as session:
+                            response_obj = session.get(models.QNA_Analysis, response_id)
+                            if response_obj:
+                                response_obj.answer_text = "Error in video media processing"
+                                response_obj.ai_analysis = {"status": "error"}
+                                session.add(response_obj)
+                                session.commit()
+                                self.check_interview_completion(
+                                    session, response_obj.interview_analysis_id
+                                )
+                        return
+                    finally:
+                        if temp_video_path and os.path.exists(temp_video_path):
+                            try:
+                                os.remove(temp_video_path)
+                            except Exception:
+                                pass
+                else:
+                    logger.error(f"Video media file missing in MinIO: {video_s3_key}")
+                    with Session(self.engine) as session:
+                        response_obj = session.get(models.QNA_Analysis, response_id)
                         if response_obj:
-                            response_obj.ai_analysis = {
-                                "status": "error",
-                                "message": "Missing context",
-                            }
-                            error_session.add(response_obj)
-                            error_session.commit()
+                            response_obj.answer_text = "Video media file missing"
+                            response_obj.ai_analysis = {"status": "error"}
+                            session.add(response_obj)
+                            session.commit()
                             self.check_interview_completion(
-                                error_session, response_obj.interview_analysis_id
+                                session, response_obj.interview_analysis_id
                             )
                     return
 
-            interviewer = AIInterviewer(
-                job_role=context["job_title"],
-                job_description=context["job_description"],
-                experience=context["experience_level"],
-                skills=context["skills"],
-                topics=context["tb_interview_focus_areas"],
-                resume_text=context["resume_text"],
-            )
+            # --- ANSWER CLARITY & COMPLETENESS EVALUATION ---
+            raw_transcript = (answer_text or "").strip()
+            words = [w for w in raw_transcript.split() if len(w) > 1 or w.isalnum()]
+            low_fillers = {"thank you", "thank you.", "thanks", "bye", "bye bye", "no answer", "none", "n/a", ".", "...", "okay", "yes", "no"}
 
-            content_result = interviewer.analyze_answer(question_text, answer_text)
+            is_answered = (len(raw_transcript) >= 6 and len(words) >= 3 and raw_transcript.lower() not in low_fillers)
+            is_inaudible = ("[inaudible]" in raw_transcript.lower())
+            is_clear = is_answered and not is_inaudible
+
+            if not is_answered:
+                clarity_rating = "Unanswered / Silent"
+                # Log unanswered warning into tb_proctoring_logs
+                with Session(self.engine) as log_session:
+                    try:
+                        proctor_log = models.ProctoringLogs(
+                            interview_analysis_id=interview_analysis_id,
+                            event_type=models.ProctoringEventType.audio_violation,
+                            details=json.dumps(["Question Unanswered / Silent Submission in Answer"]),
+                            image_path=None,
+                            tb_severity="low severity",
+                        )
+                        log_session.add(proctor_log)
+                        log_session.commit()
+                        logger.info(f"[analysis_worker] Logged unanswered violation for Q{response_id}")
+                    except Exception as unans_err:
+                        logger.error(f"[analysis_worker] Error logging unanswered log: {unans_err}")
+
+                content_result = {
+                    "domain_knowledge": 0,
+                    "problem_solving": 0,
+                    "job_relevance": 0,
+                    "communication_clarity": 0,
+                    "relevant_answer": "No",
+                    "overall": 0.0,
+                    "feedback": "Candidate did not provide an answer (Question was unanswered / silent recording).",
+                    "ai_suggested_answer": "Please provide a comprehensive technical answer addressing the question.",
+                }
+            elif not is_clear:
+                clarity_rating = "Low Audio Clarity / Inaudible"
+                with Session(self.engine) as log_session:
+                    try:
+                        proctor_log = models.ProctoringLogs(
+                            interview_analysis_id=interview_analysis_id,
+                            event_type=models.ProctoringEventType.audio_violation,
+                            details=json.dumps(["Low Audio Clarity / Inaudible Speech in Answer"]),
+                            image_path=None,
+                            tb_severity="low severity",
+                        )
+                        log_session.add(proctor_log)
+                        log_session.commit()
+                    except Exception as inaud_err:
+                        logger.error(f"[analysis_worker] Error logging low clarity log: {inaud_err}")
+
+                with Session(self.engine) as session:
+                    context = db_operations.get_interview_context(
+                        session, interview_analysis_id
+                    )
+                interviewer = AIInterviewer(
+                    job_role=context["job_title"] if context else "Candidate",
+                    job_description=context["job_description"] if context else "",
+                    experience=context["experience_level"] if context else "",
+                    skills=context["skills"] if context else "",
+                    topics=context["tb_interview_focus_areas"] if context else [""],
+                    resume_text=context["resume_text"] if context else "",
+                )
+                content_result = interviewer.analyze_answer(question_text, answer_text)
+            else:
+                clarity_rating = "Clear"
+                with Session(self.engine) as session:
+                    context = db_operations.get_interview_context(
+                        session, interview_analysis_id
+                    )
+                interviewer = AIInterviewer(
+                    job_role=context["job_title"] if context else "Candidate",
+                    job_description=context["job_description"] if context else "",
+                    experience=context["experience_level"] if context else "",
+                    skills=context["skills"] if context else "",
+                    topics=context["tb_interview_focus_areas"] if context else [""],
+                    resume_text=context["resume_text"] if context else "",
+                )
+                content_result = interviewer.analyze_answer(question_text, answer_text)
 
             if content_result:
                 final_analysis = content_result
@@ -230,6 +445,15 @@ class AnalysisWorker(threading.Thread):
                         if key not in blocked_keys:
                             final_analysis[key] = value
 
+                # Attach answer quality and proctoring violation summary
+                final_analysis["answer_quality"] = {
+                    "is_answered": is_answered,
+                    "is_clear": is_clear,
+                    "clarity_rating": clarity_rating,
+                    "transcript": raw_transcript,
+                    "proctoring_violations": video_proctor_result.get("violations", []) if video_proctor_result else [],
+                }
+
                 metrics = []
                 for key in [
                     "domain_knowledge",
@@ -240,10 +464,12 @@ class AnalysisWorker(threading.Thread):
                     if key in final_analysis:
                         metrics.append(final_analysis[key])
 
-                if metrics:
+                if metrics and is_answered:
                     final_analysis["overall"] = round(
                         (sum(metrics) / len(metrics)) * 10, 1
                     )
+                elif not is_answered:
+                    final_analysis["overall"] = 0.0
 
                 with Session(self.engine) as session:
                     response_obj = session.get(models.QNA_Analysis, response_id)
@@ -253,7 +479,7 @@ class AnalysisWorker(threading.Thread):
                         session.add(response_obj)
                         session.commit()
                         logger.info(
-                            f"Full analysis saved for response ID {response_id}"
+                            f"Full analysis saved for response ID {response_id} (Status: {clarity_rating})"
                         )
                         self.check_interview_completion(session, interview_analysis_id)
             else:

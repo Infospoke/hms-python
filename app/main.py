@@ -3,7 +3,7 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 from fastapi import FastAPI
 from fastapi import Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from starlette.responses import Response as StarletteResponse
 from sqlalchemy.exc import (
     IntegrityError,
@@ -70,6 +70,23 @@ async def access_log_middleware(request: Request, call_next):
 
 
 app.include_router(api_router, prefix="/api")
+
+
+@app.get("/candidate-stream")
+def candidate_stream_page():
+    return FileResponse("candidate_stream.html")
+
+
+@app.get("/recruiter-stream")
+def recruiter_stream_page():
+    return FileResponse("recruiter_stream.html")
+
+
+@app.get("/video-test")
+@app.get("/local-test")
+@app.get("/test-recorder")
+def local_test_page():
+    return FileResponse("local_media_analyzer.html")
 
 
 # --- STARTUP LOGIC ---

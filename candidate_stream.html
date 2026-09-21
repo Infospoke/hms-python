@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Interview Portal - Candidate Feed</title>
+    <title>AI Proctoring - Candidate Stream (REST API)</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-primary: #090d16;
@@ -15,13 +15,15 @@
             --bg-tertiary: #1b2336;
             --text-primary: #f3f4f6;
             --text-secondary: #9ca3af;
-            --accent-primary: #3b82f6; /* Modern Blue */
+            --accent-primary: #3b82f6;
             --accent-glow: rgba(59, 130, 246, 0.15);
             --danger: #ef4444;
+            --warning: #f59e0b;
             --success: #10b981;
             --border-color: rgba(255, 255, 255, 0.08);
             --font-sans: 'Plus Jakarta Sans', sans-serif;
             --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
         }
 
         body {
@@ -29,7 +31,7 @@
             background-color: var(--bg-primary);
             color: var(--text-primary);
             margin: 0;
-            padding: 40px 20px;
+            padding: 30px 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -42,33 +44,33 @@
 
         .header {
             text-align: center;
-            margin-bottom: 35px;
-            max-width: 600px;
+            margin-bottom: 25px;
+            max-width: 650px;
         }
 
         h1 {
             font-family: var(--font-display);
-            font-size: 2.2rem;
+            font-size: 2.1rem;
             font-weight: 700;
             background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin: 0 0 10px 0;
+            margin: 0 0 8px 0;
             letter-spacing: -0.02em;
         }
 
         p.subtitle {
             color: var(--text-secondary);
-            font-size: 1rem;
+            font-size: 0.95rem;
             margin: 0;
             line-height: 1.5;
         }
 
         .dashboard {
             display: grid;
-            grid-template-columns: 1fr 360px;
-            gap: 30px;
-            max-width: 1050px;
+            grid-template-columns: 1fr 380px;
+            gap: 25px;
+            max-width: 1100px;
             width: 100%;
         }
 
@@ -81,13 +83,12 @@
         .card {
             background-color: var(--bg-secondary);
             border: 1px solid var(--border-color);
-            border-radius: 20px;
-            padding: 30px;
+            border-radius: 18px;
+            padding: 24px;
             box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
             display: flex;
             flex-direction: column;
             position: relative;
-            overflow: hidden;
         }
 
         .video-container {
@@ -106,20 +107,19 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transform: scaleX(-1); /* Mirror effect for candidate */
+            transform: scaleX(-1);
         }
 
-        /* Video overlays */
         .live-badge {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            background-color: rgba(239, 68, 68, 0.2);
-            border: 1px solid var(--danger);
-            color: #fca5a5;
-            padding: 6px 14px;
+            top: 16px;
+            left: 16px;
+            background-color: rgba(16, 185, 129, 0.2);
+            border: 1px solid var(--success);
+            color: #6ee7b7;
+            padding: 5px 12px;
             border-radius: 30px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             font-weight: 700;
             letter-spacing: 0.05em;
             display: flex;
@@ -138,7 +138,7 @@
         .live-dot {
             width: 8px;
             height: 8px;
-            background-color: var(--danger);
+            background-color: var(--success);
             border-radius: 50%;
             animation: pulse 1.5s infinite;
         }
@@ -149,314 +149,486 @@
             100% { transform: scale(0.9); opacity: 0.6; }
         }
 
-        .camera-guide {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: 2px dashed rgba(255, 255, 255, 0.15);
-            box-sizing: border-box;
-            border-radius: 12px;
-            pointer-events: none;
-            display: flex;
+        .status-pill {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: inline-flex;
             align-items: center;
-            justify-content: center;
-            z-index: 5;
+            gap: 6px;
         }
 
-        .guide-oval {
-            width: 50%;
-            height: 65%;
-            border: 2px dashed rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
+        .status-idle {
+            background-color: rgba(156, 163, 175, 0.15);
+            color: #d1d5db;
+            border: 1px solid rgba(156, 163, 175, 0.3);
         }
 
-        .controls-sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: 25px;
+        .status-active {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-sending {
+            background-color: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+            border: 1px solid rgba(59, 130, 246, 0.4);
         }
 
         .control-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
+            margin-bottom: 16px;
         }
 
         label {
-            font-size: 0.85rem;
+            display: block;
+            font-size: 0.82rem;
             font-weight: 600;
             color: var(--text-secondary);
+            margin-bottom: 6px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
 
-        input {
+        input[type="text"], select {
+            width: 100%;
+            padding: 10px 14px;
             background-color: var(--bg-tertiary);
             border: 1px solid var(--border-color);
+            border-radius: 10px;
             color: var(--text-primary);
-            padding: 14px 16px;
-            border-radius: 12px;
-            font-size: 0.95rem;
-            transition: all 0.25s ease;
-            font-family: inherit;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
         }
 
-        input:focus {
-            outline: none;
+        input[type="text"]:focus, select:focus {
             border-color: var(--accent-primary);
-            box-shadow: 0 0 0 4px var(--accent-glow);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            margin-bottom: 16px;
+            cursor: pointer;
+        }
+
+        .checkbox-group input {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent-primary);
+        }
+
+        .checkbox-group span {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .mic-meter-container {
+            margin-bottom: 16px;
+        }
+
+        .mic-meter-bar {
+            height: 10px;
+            width: 100%;
+            background-color: var(--bg-tertiary);
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .mic-meter-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+            transition: width 0.1s ease;
         }
 
         button {
+            width: 100%;
+            padding: 13px;
             background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
             color: white;
             border: none;
-            padding: 16px 20px;
-            font-size: 1rem;
-            font-weight: 600;
             border-radius: 12px;
+            font-family: var(--font-sans);
+            font-weight: 600;
+            font-size: 0.95rem;
             cursor: pointer;
-            transition: all 0.25s ease;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
             display: flex;
-            justify-content: center;
             align-items: center;
-            gap: 10px;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+            transition: all 0.2s ease;
         }
 
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.45);
-        }
-
-        button:active {
-            transform: translateY(0);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
         }
 
         button.stop {
             background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
         }
 
         button.stop:hover {
-            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
         }
 
-        .status-badge-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-top: 5px;
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
         }
 
-        .status-pill {
-            padding: 6px 14px;
-            border-radius: 30px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            border: 1px solid transparent;
-        }
-
-        .status-disconnected {
-            background-color: rgba(239, 68, 68, 0.1);
-            color: #fca5a5;
-            border-color: rgba(239, 68, 68, 0.2);
-        }
-
-        .status-connected {
-            background-color: rgba(16, 185, 129, 0.1);
-            color: #a7f3d0;
-            border-color: rgba(16, 185, 129, 0.2);
-        }
-
-        .instructions-card {
-            background-color: rgba(255, 255, 255, 0.02);
+        .stat-box {
+            background-color: var(--bg-tertiary);
             border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 20px;
+            border-radius: 10px;
+            padding: 10px;
+            text-align: center;
         }
 
-        .instructions-card h3 {
-            margin: 0 0 12px 0;
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--text-primary);
+        .stat-box .val {
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #60a5fa;
         }
 
-        .instructions-card ul {
-            margin: 0;
-            padding-left: 18px;
+        .stat-box .lbl {
+            font-size: 0.72rem;
             color: var(--text-secondary);
-            font-size: 0.85rem;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
+            margin-top: 2px;
+        }
+
+        .log-terminal {
+            background-color: #050811;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: #a78bfa;
+            max-height: 160px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+
+        .log-line {
+            margin-bottom: 4px;
             line-height: 1.4;
         }
+        .log-success { color: #34d399; }
+        .log-error { color: #f87171; }
+        .log-warn { color: #fbbf24; }
     </style>
 </head>
 <body>
 
     <div class="header">
         <h1>AI Proctoring - Candidate Stream</h1>
-        <p class="subtitle">Please share your camera feed to start the automated identity and activity monitoring session.</p>
+        <p class="subtitle">Captures webcam frames and sends them via <code>POST /api/interview/analyze-image</code> with live audio/speech detection.</p>
     </div>
 
     <div class="dashboard">
         <!-- Main Video Panel -->
         <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <span style="font-weight: 600; font-size: 1.1rem; color: #f3f4f6;">Live Webcam Monitor</span>
-                <div id="statusBadge" class="status-pill status-disconnected">Disconnected</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <span style="font-weight: 600; font-size: 1.05rem; color: #f3f4f6;">Live Webcam Feed</span>
+                <div id="statusBadge" class="status-pill status-idle">Idle (Ready)</div>
             </div>
             
             <div class="video-container">
                 <div id="liveBadge" class="live-badge">
                     <div class="live-dot"></div>
-                    <span>LIVE STREAMING</span>
-                </div>
-                <div class="camera-guide">
-                    <div class="guide-oval"></div>
+                    <span>STREAMING TO API</span>
                 </div>
                 <video id="webcam" autoplay playsinline muted></video>
             </div>
+
+            <!-- Stats Bar -->
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div id="statFrames" class="val">0</div>
+                    <div class="lbl">FRAMES SENT</div>
+                </div>
+                <div class="stat-box">
+                    <div id="statSuccess" class="val">0</div>
+                    <div class="lbl">ACCEPTED (202)</div>
+                </div>
+                <div class="stat-box">
+                    <div id="statLatency" class="val">0ms</div>
+                    <div class="lbl">API LATENCY</div>
+                </div>
+                <div class="stat-box">
+                    <div id="statVoice" class="val">SILENT</div>
+                    <div class="lbl">VOICE STATUS</div>
+                </div>
+            </div>
+
+            <!-- Log Terminal -->
+            <div class="log-terminal" id="logTerminal">
+                <div class="log-line">[System] Ready. Enter session ID and click Start Stream.</div>
+            </div>
         </div>
 
-        <!-- Sidebar controls -->
-        <div class="controls-sidebar">
-            <div class="card">
-                <div class="control-group" style="margin-bottom: 20px;">
-                    <label for="wsUrl">WebSocket Server Endpoint</label>
-                    <input type="text" id="wsUrl" value="ws://127.0.0.1:5002/api/interview/ws/live-monitoring/75">
+        <!-- Sidebar Controls -->
+        <div class="card">
+            <div class="control-group">
+                <label for="apiUrl">API Endpoint (POST)</label>
+                <input type="text" id="apiUrl" value="http://127.0.0.1:5002/api/interview/analyze-image">
+            </div>
+
+            <div class="control-group">
+                <label for="sessionId">Interview Session ID</label>
+                <input type="text" id="sessionId" value="75">
+            </div>
+
+            <div class="control-group">
+                <label for="fpsInterval">Capture Interval</label>
+                <select id="fpsInterval">
+                    <option value="1000">1 frame / sec (1000ms)</option>
+                    <option value="500">2 frames / sec (500ms)</option>
+                    <option value="2000">1 frame / 2 sec (2000ms)</option>
+                </select>
+            </div>
+
+            <!-- Voice Activity Settings -->
+            <div class="control-group">
+                <label>Microphone Activity Level</label>
+                <div class="mic-meter-bar">
+                    <div id="micFill" class="mic-meter-fill"></div>
                 </div>
-
-                <button id="startBtn">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path>
-                    </svg>
-                    Start Camera Stream
-                </button>
             </div>
 
-            <!-- Instructions -->
-            <div class="instructions-card">
-                <h3>Camera Placement Guidelines</h3>
-                <ul>
-                    <li>Ensure you are in a well-lit room with light in front of you.</li>
-                    <li>Center your head within the guide circle shown on screen.</li>
-                    <li>Do not close or minimize this tab during the interview session.</li>
-                    <li>Avoid having other people in the camera's field of view.</li>
-                </ul>
-            </div>
+            <label class="checkbox-group">
+                <input type="checkbox" id="forceVoiceSim">
+                <span>Force Simulate Voice Speaking (ON)</span>
+            </label>
+
+            <button id="startBtn">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"></path>
+                </svg>
+                Start Camera Stream (API)
+            </button>
         </div>
     </div>
 
     <script>
         const startBtn = document.getElementById('startBtn');
-        const wsUrlInput = document.getElementById('wsUrl');
+        const apiUrlInput = document.getElementById('apiUrl');
+        const sessionIdInput = document.getElementById('sessionId');
+        const fpsIntervalSelect = document.getElementById('fpsInterval');
+        const forceVoiceSimCheck = document.getElementById('forceVoiceSim');
         const statusBadge = document.getElementById('statusBadge');
         const liveBadge = document.getElementById('liveBadge');
         const webcam = document.getElementById('webcam');
+        const micFill = document.getElementById('micFill');
+        const logTerminal = document.getElementById('logTerminal');
 
-        let wsConnection = null;
+        const statFrames = document.getElementById('statFrames');
+        const statSuccess = document.getElementById('statSuccess');
+        const statLatency = document.getElementById('statLatency');
+        const statVoice = document.getElementById('statVoice');
+
+        if (window.location.protocol && window.location.protocol.startsWith('http')) {
+            apiUrlInput.value = `${window.location.origin}/api/interview/analyze-image`;
+        }
+
         let localStream = null;
-        let streamInterval = null;
+        let audioContext = null;
+        let analyser = null;
+        let micDataArray = null;
+        let streamTimer = null;
+        let micPollTimer = null;
+
+        let framesSent = 0;
+        let framesAccepted = 0;
+        let isVoiceDetected = false;
+        let isSending = false;
+
+        function log(msg, type = '') {
+            const el = document.createElement('div');
+            el.className = `log-line ${type}`;
+            const time = new Date().toLocaleTimeString();
+            el.textContent = `[${time}] ${msg}`;
+            logTerminal.appendChild(el);
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+        }
+
+        // Setup microphone audio level analyzer
+        async function setupAudioMeter(stream) {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                micDataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                micPollTimer = setInterval(() => {
+                    if (!analyser) return;
+                    analyser.getByteFrequencyData(micDataArray);
+                    let sum = 0;
+                    for (let i = 0; i < micDataArray.length; i++) {
+                        sum += micDataArray[i];
+                    }
+                    const avg = sum / micDataArray.length;
+                    const percent = Math.min(100, Math.round((avg / 60) * 100));
+                    micFill.style.width = `${percent}%`;
+
+                    // Voice detection threshold
+                    const forceSim = forceVoiceSimCheck.checked;
+                    isVoiceDetected = forceSim || (avg > 15);
+
+                    if (isVoiceDetected) {
+                        statVoice.textContent = forceSim ? "SIMULATED" : "SPEAKING";
+                        statVoice.style.color = "#34d399";
+                    } else {
+                        statVoice.textContent = "SILENT";
+                        statVoice.style.color = "#60a5fa";
+                    }
+                }, 100);
+            } catch (err) {
+                console.warn("Audio meter init failed:", err);
+            }
+        }
+
+        async function sendFrame() {
+            if (isSending || !localStream || webcam.videoWidth === 0) return;
+            isSending = true;
+
+            const apiUrl = apiUrlInput.value.trim();
+            const sessionId = sessionIdInput.value.trim();
+
+            try {
+                // Capture canvas frame
+                const canvas = document.createElement('canvas');
+                canvas.width = 320;
+                canvas.height = 240;
+                const ctx = canvas.getContext('2d');
+                
+                // Mirror horizontally
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+
+                const imageBase64 = canvas.toDataURL('image/jpeg', 0.55);
+
+                const payload = {
+                    interview_session_id: sessionId,
+                    image_base64: imageBase64,
+                    audio_detected: isVoiceDetected,
+                    is_speaking: isVoiceDetected
+                };
+
+                framesSent++;
+                statFrames.textContent = framesSent;
+
+                const t0 = performance.now();
+                const res = await fetch(apiUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const elapsed = Math.round(performance.now() - t0);
+                statLatency.textContent = `${elapsed}ms`;
+
+                if (res.status === 202 || res.ok) {
+                    framesAccepted++;
+                    statSuccess.textContent = framesAccepted;
+                    statusBadge.textContent = "Streaming (202 Accepted)";
+                    statusBadge.className = "status-pill status-active";
+                } else {
+                    const errJson = await res.json().catch(() => ({}));
+                    log(`API Error (${res.status}): ${errJson.detail || res.statusText}`, 'log-error');
+                }
+            } catch (err) {
+                log(`Network error: ${err.message}`, 'log-error');
+                statusBadge.textContent = "Error";
+                statusBadge.className = "status-pill status-idle";
+            } finally {
+                isSending = false;
+            }
+        }
 
         startBtn.addEventListener('click', async () => {
-            // If already active, stop it
-            if (localStream || wsConnection) {
+            if (localStream) {
                 stopStreaming();
                 return;
             }
 
-            const wsUrl = wsUrlInput.value.trim();
-            
             try {
-                // 1. Request Webcam Media
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        width: { ideal: 640 }, 
-                        height: { ideal: 480 },
-                        facingMode: "user"
-                    } 
+                log("Requesting camera & microphone access...");
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+                    audio: true
                 });
                 webcam.srcObject = localStream;
 
-                // 2. Open WebSocket
-                wsConnection = new WebSocket(wsUrl);
+                await setupAudioMeter(localStream);
 
-                wsConnection.onopen = () => {
-                    statusBadge.textContent = "Streaming";
-                    statusBadge.className = "status-pill status-connected";
-                    
-                    liveBadge.classList.add('active');
-                    
-                    startBtn.textContent = "Stop Camera Stream";
-                    startBtn.classList.add('stop');
-                    
-                    // Setup capture canvas
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
+                const intervalMs = parseInt(fpsIntervalSelect.value, 10) || 1000;
+                streamTimer = setInterval(sendFrame, intervalMs);
 
-                    // Broadcast frame every 100ms
-                    streamInterval = setInterval(() => {
-                        if (wsConnection && wsConnection.readyState === WebSocket.OPEN && webcam.videoWidth > 0) {
-                            canvas.width = 320; // scale down for efficient socket throughput
-                            canvas.height = 240;
-                            // Flip horizontally to reverse mirror on sending
-                            context.translate(canvas.width, 0);
-                            context.scale(-1, 1);
-                            context.drawImage(webcam, 0, 0, canvas.width, canvas.height);
-                            // Reset transform
-                            context.setTransform(1, 0, 0, 1, 0, 0);
-                            
-                            const frameData = canvas.toDataURL('image/jpeg', 0.55); // high compression JPEG
-                            wsConnection.send(frameData);
-                        }
-                    }, 100);
-                };
+                statusBadge.textContent = "Streaming (API)";
+                statusBadge.className = "status-pill status-active";
+                liveBadge.classList.add('active');
 
-                wsConnection.onclose = () => {
-                    stopStreaming();
-                };
-
-                wsConnection.onerror = (err) => {
-                    console.error("WebSocket Error:", err);
-                    stopStreaming();
-                };
+                startBtn.textContent = "Stop Camera Stream";
+                startBtn.classList.add('stop');
+                log("Stream started: sending frames to POST /api/interview/analyze-image", "log-success");
 
             } catch (err) {
-                alert("Could not access camera or connect to server. Please check permissions and backend configuration.");
-                console.error(err);
+                alert("Could not access camera/mic: " + err.message);
+                log("Camera permission failed: " + err.message, "log-error");
                 stopStreaming();
             }
         });
 
         function stopStreaming() {
-            if (streamInterval) {
-                clearInterval(streamInterval);
-                streamInterval = null;
+            if (streamTimer) {
+                clearInterval(streamTimer);
+                streamTimer = null;
+            }
+            if (micPollTimer) {
+                clearInterval(micPollTimer);
+                micPollTimer = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
             }
             if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+                localStream.getTracks().forEach(t => t.stop());
                 localStream = null;
             }
             webcam.srcObject = null;
-            
-            if (wsConnection) {
-                wsConnection.close();
-                wsConnection = null;
-            }
+            micFill.style.width = "0%";
 
-            statusBadge.textContent = "Disconnected";
-            statusBadge.className = "status-pill status-disconnected";
-            
+            statusBadge.textContent = "Idle (Stopped)";
+            statusBadge.className = "status-pill status-idle";
             liveBadge.classList.remove('active');
-            
-            startBtn.textContent = "Start Camera Stream";
+
+            startBtn.textContent = "Start Camera Stream (API)";
             startBtn.classList.remove('stop');
+            log("Stream stopped.", "log-warn");
         }
     </script>
 </body>

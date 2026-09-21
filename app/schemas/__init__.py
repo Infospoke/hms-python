@@ -94,6 +94,13 @@ class SubmitAnswersRequest(BaseModel):
     audios: dict
 
 
+class SubmitVideoAnswersRequest(BaseModel):
+    interview_session_id: str
+    videos: dict
+    audios: Optional[dict] = None
+
+
+
 # /submit-answer takes multipart/form-data (text fields + an `audio` file part),
 # so its fields are declared as Form()/File() params on the endpoint itself.
 
@@ -113,6 +120,8 @@ class ProctoringLogRequest(BaseModel):
 class AnalyzeImageRequest(BaseModel):
     interview_session_id: str
     image_base64: str
+    audio_detected: Optional[bool] = False
+    is_speaking: Optional[bool] = False
 
 
 from pydantic import BaseModel

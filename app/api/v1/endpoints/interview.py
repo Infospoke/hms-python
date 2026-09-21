@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, WebSocket, WebSocketDisconnect, File, Form, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, File, Form, UploadFile
 from typing import Annotated
 from sqlmodel import Session, select
 from app import models
@@ -8,7 +8,6 @@ from app.core import config as consts
 from uuid import uuid4
 from app.services.email import interview_emails
 from app.services.ai_interviewer.ai_interviewer import AIInterviewer
-from app.services.live_stream_manager import stream_manager
 from app.utils import utils
 from app.utils import timezone_utils
 from app.services.seb.seb_verify import verify_seb
@@ -1211,15 +1210,11 @@ async def submit_answer(
         f"(file={audio.filename!r}, type={audio.content_type!r})"
     )
 
-    interview_analysis = session.exec(
-        select(models.InterviewAnalysis).where(
-            models.InterviewAnalysis.interview_session_id == interview_session_id
-        )
-    ).first()
+    interview_analysis = _resolve_interview_analysis(session, interview_session_id)
 
     if not interview_analysis:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Interview '{interview_session_id}' not found"
         )
     if interview_analysis.status == models.StatusEnum.completed:
         raise HTTPException(
@@ -1227,6 +1222,7 @@ async def submit_answer(
             detail="Interview already completed. Cannot submit more answers.",
         )
 
+    interview_session_id = interview_analysis.interview_session_id
     extension, audio_content_type = _resolve_answer_audio_format(audio)
 
     if audio.size is not None and audio.size > MAX_ANSWER_AUDIO_BYTES:
@@ -1312,6 +1308,352 @@ async def submit_answer(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An internal server error occurred.",
         )
+
+
+MAX_ANSWER_VIDEO_BYTES = 100 * 1024 * 1024
+
+ANSWER_VIDEO_EXTENSIONS = {
+    "video/webm": ".webm",
+    "video/mp4": ".mp4",
+    "video/x-matroska": ".mkv",
+    "video/mkv": ".mkv",
+    "video/quicktime": ".mov",
+    "video/avi": ".avi",
+    "video/x-msvideo": ".avi",
+}
+
+
+
+def _resolve_answer_video_format(upload: UploadFile) -> tuple[str, str]:
+    content_type = (upload.content_type or "").split(";")[0].strip().lower()
+    extension = ANSWER_VIDEO_EXTENSIONS.get(content_type)
+
+    if extension is None:
+        suffix = Path(upload.filename or "").suffix.lower()
+        if suffix in set(ANSWER_VIDEO_EXTENSIONS.values()):
+            extension = suffix
+            content_type = next(
+                ct for ct, ext in ANSWER_VIDEO_EXTENSIONS.items() if ext == suffix
+            )
+
+    if extension is None:
+        extension = ".webm"
+        content_type = "video/webm"
+
+    return extension, content_type
+
+
+def _resolve_interview_analysis(session: Session, session_id_input: str) -> Optional[models.InterviewAnalysis]:
+    """Helper to resolve InterviewAnalysis by either UUID interview_session_id or integer primary key."""
+    s_id = str(session_id_input).strip()
+    record = session.exec(
+        select(models.InterviewAnalysis).where(
+            models.InterviewAnalysis.interview_session_id == s_id
+        )
+    ).first()
+    if record:
+        return record
+    if s_id.isdigit():
+        record = session.exec(
+            select(models.InterviewAnalysis).where(
+                models.InterviewAnalysis.id == int(s_id)
+            )
+        ).first()
+        if record:
+            return record
+    return None
+
+
+@router.get("/active-sessions")
+def get_active_sessions(session: Session = Depends(deps.get_session)):
+    """Return recent interview sessions for testing and frontend selectors."""
+    rows = session.exec(
+        select(models.InterviewAnalysis)
+        .order_by(models.InterviewAnalysis.id.desc())
+        .limit(10)
+    ).all()
+    return [
+        {
+            "id": r.id,
+            "interview_session_id": r.interview_session_id,
+            "status": str(r.status.value) if hasattr(r.status, "value") else str(r.status),
+            "candidate_name": f"{r.job_applications.first_name} {r.job_applications.last_name}" if (hasattr(r, "job_applications") and r.job_applications) else f"Session {r.id}",
+        }
+        for r in rows
+    ]
+
+
+@router.post("/submit-video-answer")
+async def submit_video_answer(
+    interview_session_id: Annotated[str, Form()],
+    question_index: Annotated[
+        int, Form(description="1-based, matches the InterviewAnalysis questions list.")
+    ],
+    video: Annotated[
+        UploadFile, File(description="The recorded video answer.")
+    ],
+    audio: Annotated[
+        Optional[UploadFile], File(description="Optional audio track or separate recording.")
+    ] = None,
+    is_final: Annotated[
+        bool, Form(description="True on the last question to finalize in one call.")
+    ] = False,
+    session: Session = Depends(deps.get_session),
+):
+    """Submit one question's video (and optional audio) answer as multipart/form-data.
+    Uploads to MinIO and queues for background AI confidence & proctoring analysis.
+    Temporary MinIO files are deleted automatically once processing finishes."""
+    import asyncio
+
+    logger.info(
+        f"submit-video-answer Q{question_index} for session {interview_session_id} "
+        f"(video={video.filename!r}, audio={audio.filename if audio else None!r})"
+    )
+
+    interview_analysis = _resolve_interview_analysis(session, interview_session_id)
+
+    if not interview_analysis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview session '{interview_session_id}' not found. Please verify the session ID.",
+        )
+    if interview_analysis.status == models.StatusEnum.completed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Interview already completed. Cannot submit more answers.",
+        )
+
+    # Use resolved canonical UUID interview_session_id
+    interview_session_id = interview_analysis.interview_session_id
+
+    video_ext, video_content_type = _resolve_answer_video_format(video)
+    try:
+        video_bytes = await video.read()
+    finally:
+        await video.close()
+
+    if not video_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Empty video payload."
+        )
+    if len(video_bytes) > MAX_ANSWER_VIDEO_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Video answer exceeds maximum allowed size (100MB).",
+        )
+
+    audio_bytes = None
+    audio_ext = None
+    audio_content_type = None
+    if audio is not None:
+        audio_ext, audio_content_type = _resolve_answer_audio_format(audio)
+        try:
+            audio_bytes = await audio.read()
+        finally:
+            await audio.close()
+
+    try:
+        def run_store():
+            folder_name = db_operations.get_candidate_proctoring_folder(
+                interview_session_id
+            )
+            timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
+            video_filename = (
+                f"video_{interview_session_id}_{question_index}_{timestamp_str}{video_ext}"
+            )
+            video_s3_key = f"ai-interviews/video/{folder_name}/{video_filename}"
+
+            vid_res = aws_helper.upload_video_to_s3(
+                video_bytes, video_s3_key, content_type=video_content_type
+            )
+            if not vid_res.get("success"):
+                raise Exception(
+                    f"MinIO video upload failed for Q{question_index}: {vid_res.get('error')}"
+                )
+
+            audio_s3_key = None
+            if audio_bytes:
+                audio_filename = (
+                    f"audio_{interview_session_id}_{question_index}_{timestamp_str}{audio_ext}"
+                )
+                audio_s3_key = f"ai-interviews/audio/{folder_name}/{audio_filename}"
+                aud_res = aws_helper.upload_audio_to_s3(
+                    audio_bytes, audio_s3_key, content_type=audio_content_type
+                )
+                if not aud_res.get("success"):
+                    raise Exception(
+                        f"MinIO audio upload failed for Q{question_index}: {aud_res.get('error')}"
+                    )
+
+            logger.info(
+                f"[submit-video-answer] Q{question_index} uploaded to MinIO: video={video_s3_key}, audio={audio_s3_key}"
+            )
+
+            from app.db.session import engine
+
+            with Session(engine) as db_session:
+                res = db_operations.upsert_pending_video_answer(
+                    db_session,
+                    interview_session_id,
+                    question_index,
+                    video_s3_key,
+                    audio_path=audio_s3_key,
+                )
+                if res.get("success") and is_final:
+                    db_operations.mark_interview_completed(
+                        db_session, interview_session_id
+                    )
+                return res
+
+        db_result = await asyncio.to_thread(run_store)
+
+        if not db_result.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to store video answer.",
+            )
+
+        return {
+            "message": "video-answer-submitted",
+            "question_index": question_index,
+            "is_final": is_final,
+            "status": "completed" if is_final else "in_progress",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in submit-video-answer: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal server error occurred.",
+        )
+
+
+@router.post("/submit-video-answers")
+async def submit_video_answers(
+    data: SubmitVideoAnswersRequest,
+    session: Session = Depends(deps.get_session),
+):
+    """Batch submit video answers (JSON base64 format). Uploads video & audio to MinIO
+    and queues for processing. MinIO media is automatically cleaned up after analysis."""
+    import asyncio
+
+    logger.info(f"submit-video-answers for session {data.interview_session_id}")
+    interview_session_id = data.interview_session_id
+
+    interview_analysis = session.exec(
+        select(models.InterviewAnalysis).where(
+            models.InterviewAnalysis.interview_session_id == interview_session_id
+        )
+    ).first()
+
+    if not interview_analysis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found",
+        )
+    if interview_analysis.status == models.StatusEnum.completed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Interview already completed.",
+        )
+
+    try:
+        def run_create_pending():
+            folder_name = db_operations.get_candidate_proctoring_folder(
+                interview_session_id
+            )
+            video_s3_keys = {}
+            audio_s3_keys = {}
+
+            for q_id, video_b64 in data.videos.items():
+                if video_b64.startswith("data:"):
+                    _, video_b64 = video_b64.split(",", 1)
+                video_bytes = base64.b64decode(video_b64)
+                timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
+                video_filename = f"video_{interview_session_id}_{q_id}_{timestamp_str}.webm"
+                video_s3_key = f"ai-interviews/video/{folder_name}/{video_filename}"
+
+                vid_res = aws_helper.upload_video_to_s3(
+                    video_bytes, video_s3_key, content_type="video/webm"
+                )
+                if not vid_res.get("success"):
+                    raise Exception(f"MinIO video upload failed for Q{q_id}: {vid_res.get('error')}")
+                video_s3_keys[q_id] = video_s3_key
+
+            if data.audios:
+                for q_id, audio_b64 in data.audios.items():
+                    if audio_b64.startswith("data:"):
+                        _, audio_b64 = audio_b64.split(",", 1)
+                    audio_bytes = base64.b64decode(audio_b64)
+                    timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
+                    audio_filename = f"audio_{interview_session_id}_{q_id}_{timestamp_str}.wav"
+                    audio_s3_key = f"ai-interviews/audio/{folder_name}/{audio_filename}"
+
+                    aud_res = aws_helper.upload_audio_to_s3(
+                        audio_bytes, audio_s3_key, content_type="audio/wav"
+                    )
+                    if aud_res.get("success"):
+                        audio_s3_keys[q_id] = audio_s3_key
+
+            from app.db.session import engine
+
+            with Session(engine) as db_session:
+                res = db_operations.create_pending_video_answers(
+                    db_session,
+                    interview_session_id,
+                    video_s3_keys,
+                    audio_paths=audio_s3_keys,
+                )
+
+                if res.get("success"):
+                    bg_analysis = db_session.exec(
+                        select(models.InterviewAnalysis).where(
+                            models.InterviewAnalysis.interview_session_id
+                            == interview_session_id
+                        )
+                    ).first()
+
+                    if bg_analysis:
+                        bg_analysis.status = models.StatusEnum.completed
+                        bg_analysis.interview_analysis_date = timezone_utils.get_ist_now()
+                        db_session.add(bg_analysis)
+
+                        session_obj = db_session.exec(
+                            select(models.InterviewSessions).where(
+                                models.InterviewSessions.interview_session_id
+                                == interview_session_id
+                            )
+                        ).first()
+                        if session_obj:
+                            session_obj.status = models.InterviewSessionStatusEnum.completed
+                            db_session.add(session_obj)
+
+                        db_session.commit()
+                return res
+
+        db_result = await asyncio.to_thread(run_create_pending)
+
+        if db_result.get("success"):
+            return {
+                "message": "video-answers-submitted",
+                "status": "processing",
+                "detail": "Video answers received and queued for analysis.",
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to queue video answers",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in submit-video-answers: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal server error occurred.",
+        )
+
 
 
 @router.post("/complete-interview")
@@ -1715,6 +2057,7 @@ def analyze_image(
     payload = {
         "interview_session_id": data.interview_session_id,
         "image_base64": image_base64,
+        "audio_detected": bool(data.audio_detected or data.is_speaking),
     }
 
     if len(json_dumps(payload).encode("utf-8")) > 250000:
@@ -1741,6 +2084,19 @@ def analyze_image(
         "status": "processing",
         "detail": "Image queued for proctoring analysis.",
     }
+
+
+@router.get("/candidate-stream")
+def candidate_stream_view():
+    from fastapi.responses import FileResponse
+    return FileResponse("candidate_stream.html")
+
+
+@router.get("/recruiter-stream")
+def recruiter_stream_view():
+    from fastapi.responses import FileResponse
+    return FileResponse("recruiter_stream.html")
+
 
 
 # --- Test apis ---
