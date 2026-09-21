@@ -54,6 +54,50 @@ def _load_interview_configs():
         _INTERVIEW_CONFIGS_CACHE = {}
 
 
+_AV_CONFIG_KEYS = {
+    "KAFKA_AV_TOPIC": str,
+    "FFMPEG_PATH": str,
+    "MAX_ANSWER_CLIP_BYTES": int,
+    "AV_MIN_FACE_COVERAGE": float,
+    "AV_MIN_SPEECH_SECONDS": float,
+    "AV_MIN_FPS": float,
+    "AV_MOUTH_WINDOW_SEC": float,
+    "AV_MOUTH_ACTIVITY_THRESHOLD": float,
+    "AV_MISMATCH_RATIO_THRESHOLD": float,
+    "AV_MULTI_VOICE_MIN_CLUSTERS": int,
+    "AV_ENABLE_MULTI_VOICE_FLAG": bool,
+    "AV_VOICE_CLUSTER_MIN_SHARE": float,
+    "AV_SHADOW_MODE": bool,
+    "AV_KEEP_SUSPICIOUS_CLIPS": bool,
+    "AV_KEEP_NOT_MEASURABLE_CLIPS": bool,
+    "AV_KEEP_ERROR_CLIPS": bool,
+}
+
+
+def _coerce_bool(raw):
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _apply_av_configs(cache):
+    """Let every audio/visual proctoring threshold be retuned from the
+    tb_interview_configuration table without a redeploy, since none of them
+    are calibrated yet and will need to move once real sessions are recorded."""
+    for key, caster in _AV_CONFIG_KEYS.items():
+        raw = cache.get(key)
+        if raw is None:
+            continue
+        try:
+            value = _coerce_bool(raw) if caster is bool else caster(raw)
+        except (ValueError, TypeError):
+            logger.warning(
+                f"{key} value '{raw}' is not a valid {caster.__name__} - keeping previous value."
+            )
+            continue
+        globals()[key] = value
+
+
 def _apply_interview_configs():
     global _INTERVIEW_CONFIGS_CACHE
     global ENVIRONMENT
@@ -190,6 +234,8 @@ def _apply_interview_configs():
                 f"IMAGE_PROCTORING_TIME_WINDOW value '{raw_iptw}' is not a valid integer - keeping previous value."
             )
 
+    _apply_av_configs(cache)
+
     global MAIN_SYSTEM_PROMPT, USER_PROMPT
     current_year = str(timezone_utils.get_ist_now().year)
     MAIN_SYSTEM_PROMPT = _get_prompt_content("main_system_prompt", "").replace(
@@ -279,6 +325,93 @@ IMAGE_PROCTORING_TIME_WINDOW: int = 30
 KAFKA_HOST: str = None
 KAFKA_GROUP_ID: str = None
 KAFKA_TOPIC: str = None
+
+# Topic carrying per-answer audio/visual clips for proctoring analysis. Kept
+# separate from KAFKA_TOPIC so a backlog of (much larger, much slower) clip
+# jobs can never starve live per-frame image proctoring.
+KAFKA_AV_TOPIC: str = "av-answer-analysis"
+
+# --- Per-answer audio/visual proctoring ---
+# Every threshold below is a starting point, NOT a calibrated value. They must
+# be re-derived from real recorded sessions before any of this is shown to a
+# recruiter. See AV_SHADOW_MODE.
+
+# Explicit ffmpeg location. Left empty so PATH lookup wins by default; set it
+# only on hosts where ffmpeg is installed somewhere non-standard.
+FFMPEG_PATH: str = ""
+
+# Largest answer clip accepted by /submit-answer-av.
+MAX_ANSWER_CLIP_BYTES: int = 100 * 1024 * 1024
+
+# Minimum share of frames in which a face must be found for the clip to be
+# judged at all. Below this the verdict is not_measurable, never suspicious.
+AV_MIN_FACE_COVERAGE: float = 0.50
+
+# Minimum seconds of detected speech before a mouth/audio comparison means
+# anything. Short answers are not evidence.
+AV_MIN_SPEECH_SECONDS: float = 3.0
+
+# Minimum usable video frame rate. Mouth motion cannot be recovered below this.
+AV_MIN_FPS: float = 5.0
+
+# Rolling window (seconds) over which mouth-aspect-ratio variation is measured.
+AV_MOUTH_WINDOW_SEC: float = 0.40
+
+# A mouth counts as "moving" when the rolling standard deviation of its
+# (aspect-corrected) mouth aspect ratio exceeds this. MAR is already normalised
+# by mouth width, so this is broadly scale and distance invariant.
+#
+# Measured on the synthetic fixtures in samples/av: a genuinely still mouth
+# sits at a rolling-std of ~0.024 (p90 0.034) purely from landmark jitter,
+# while a talking mouth sits at ~0.128 (p25 0.106). An earlier value of 0.015
+# was BELOW the still-mouth noise floor, so a motionless mouth read as active
+# and the detector missed the very attack it exists to catch.
+#
+# 0.05 sits above the still-mouth noise and well under talking, leaning toward
+# reading a mouth as "moving" (i.e. toward NOT flagging) when uncertain.
+# These figures come from a crude drawn face, whose landmarks are noisier than
+# a real one's; recalibrate against recorded sessions before trusting a flag.
+AV_MOUTH_ACTIVITY_THRESHOLD: float = 0.05
+
+# Flag when the mouth moved during less than this share of detected speech.
+AV_MISMATCH_RATIO_THRESHOLD: float = 0.20
+
+# Distinct voice clusters at or above this count flag as multiple speakers.
+AV_MULTI_VOICE_MIN_CLUSTERS: int = 2
+
+# Whether the voice-cluster count may raise a `suspicious` verdict on its own.
+#
+# OFF by default, because the MFCC-clustering implementation is demonstrably
+# unreliable: on the synthetic fixtures it reported five clusters for a single
+# synthesised voice while reporting one for a clip containing two genuinely
+# different voices. Those errors run in both directions, and the
+# false-positive direction would mean accusing a candidate who was alone.
+#
+# The cluster count is still computed and stored on every row, so it can be
+# validated against real recordings. Turn this on only once it has been, and
+# preferably after replacing the clustering with proper speaker embeddings
+# (SpeechBrain ECAPA-TDNN; torch/torchaudio are already installed).
+AV_ENABLE_MULTI_VOICE_FLAG: bool = False
+
+# Share of speech windows a cluster must hold to count as a real speaker,
+# rather than a burst of noise or a cough.
+AV_VOICE_CLUSTER_MIN_SHARE: float = 0.15
+
+# Shadow mode: analyse and store metrics, but write no ProctoringLogs row.
+# Turn this on for an initial calibration period.
+AV_SHADOW_MODE: bool = False
+
+# Media is kept only when there is something for a human to review. Clean and
+# not_measurable clips are deleted as soon as analysis finishes; their metrics
+# row survives, so thresholds stay tunable without retaining candidate video.
+AV_KEEP_SUSPICIOUS_CLIPS: bool = True
+AV_KEEP_NOT_MEASURABLE_CLIPS: bool = False
+
+# Clips whose analysis crashed are kept, because the failure cannot be
+# reproduced once the media is gone. This should be a near-empty bucket; if it
+# is not, that is the signal to look. Set false to delete these too, accepting
+# that production failures become undiagnosable.
+AV_KEEP_ERROR_CLIPS: bool = True
 
 MINIO_HOST: str = None
 MINIO_ACCESS_KEY: str = None

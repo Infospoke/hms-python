@@ -281,6 +281,51 @@ def delete_object(object_name):
         return {"success": False, "error": f"Failed to delete object from MinIO: {e}"}
 
 
+def upload_bytes(content, object_name, content_type="application/octet-stream"):
+    """Upload arbitrary bytes (used for answer audio/video clips)."""
+    bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
+    ensure_bucket_exists(bucket_name)
+    logger.info(
+        f"MinIO: uploading '{object_name}' ({content_type}, {len(content)} bytes)"
+    )
+    try:
+        minio_client = get_minio_client()
+        minio_client.put_object(
+            bucket_name,
+            object_name,
+            data=BytesIO(content),
+            length=len(content),
+            content_type=content_type,
+        )
+        minio_url = f"http://{consts.MINIO_HOST}/{bucket_name}/{object_name}"
+        return {"success": True, "s3_url": minio_url, "object_name": object_name}
+    except Exception as e:
+        logger.error(f"MinIO: error uploading '{object_name}': {e}")
+        return {"success": False, "error": f"Failed to upload to MinIO: {e}"}
+
+
+def get_object_bytes(object_name):
+    """Retrieve arbitrary object bytes from MinIO."""
+    bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
+    logger.info(f"MinIO: fetching object '{object_name}'")
+    response = None
+    try:
+        minio_client = get_minio_client()
+        response = minio_client.get_object(bucket_name, object_name)
+        content = response.read()
+        return {"success": True, "content": content}
+    except Exception as e:
+        logger.error(f"MinIO: error fetching object '{object_name}': {e}")
+        return {"success": False, "error": f"Failed to fetch object from MinIO: {e}"}
+    finally:
+        if response is not None:
+            try:
+                response.close()
+                response.release_conn()
+            except Exception:
+                pass
+
+
 def upload_image_to_s3(image_bytes, object_name):
     return upload_image(image_bytes, object_name)
 

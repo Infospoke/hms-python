@@ -25,21 +25,23 @@ class AudioSignalAnalyzer:
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
                     temp_wav = tf.name
 
-                ffmpeg_path = r"C:\Users\ashth\AppData\Local\bin\ffmpeg.exe"
-                cmd = [
-                    ffmpeg_path,
-                    "-y",
-                    "-i",
-                    audio_input,
-                    "-acodec",
-                    "pcm_s16le",
-                    "-ac",
-                    "1",
-                    temp_wav,
-                ]
+                # Was hardcoded to one developer's Windows install, which meant
+                # this fallback could never succeed anywhere else - including
+                # the Ubuntu server. Resolution is now shared and platform-aware.
+                from app.utils import ffmpeg_utils
 
-                logger.debug(f"Running ffmpeg command: {' '.join(cmd)}")
-                subprocess.run(cmd, check=True, capture_output=True)
+                ffmpeg_utils.run(
+                    [
+                        "-y",
+                        "-i",
+                        audio_input,
+                        "-acodec",
+                        "pcm_s16le",
+                        "-ac",
+                        "1",
+                        temp_wav,
+                    ]
+                )
 
                 y, sr = librosa.load(temp_wav, sr=None)
                 return y, sr

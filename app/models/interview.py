@@ -32,6 +32,23 @@ class ProctoringEventType(str, Enum):
     clipboard_violation = "Clipboard Violation"
     default = "No Violation"
     candidate_picture = "CANDIDATE_PICTURE"
+    av_mouth_mismatch = "AV_MOUTH_MISMATCH"
+    multiple_voices = "MULTIPLE_VOICES"
+
+
+class AVVerdictEnum(str, Enum):
+    """Outcome of per-answer audio/visual analysis.
+
+    `not_measurable` is deliberately NOT a kind of suspicion: it means the clip
+    could not be judged (face not visible enough, too little speech, decode
+    failure). Treating it as a violation would push false positives onto
+    candidates with poor lighting or cheap webcams, so it is kept separate.
+    """
+
+    clean = "clean"
+    suspicious = "suspicious"
+    not_measurable = "not_measurable"
+    error = "error"
 
 
 # --- Model Definitions ---
@@ -107,6 +124,48 @@ class ProctoringLogs(SQLModel, table=(True)):
     details: Optional[str] = Field(default=None, sa_column=Column(Text))
     image_path: Optional[str] = Field(default=None)
     tb_severity: Optional[str] = Field(default="low severity", max_length=20)
+    is_deleted: bool = Field(default=False)
+
+
+class AnswerAVAnalysis(SQLModel, table=(True)):
+    """Per-answer audio/visual proctoring metrics.
+
+    One row per submitted answer clip. The row is written for EVERY analysed
+    clip, including clean ones whose media is deleted straight afterwards, so
+    thresholds can be tuned later from the metrics even when the clip is gone.
+    """
+
+    __tablename__ = "tb_answer_av_analysis"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    interview_analysis_id: int = Field(foreign_key="tb_interview_analysis.id")
+    interview_session_id: str = Field(max_length=255, index=True)
+    question_index: int
+
+    # MinIO key, cleared once a clean clip is deleted after processing.
+    clip_path: Optional[str] = Field(default=None, max_length=500)
+    clip_retained: bool = Field(default=False)
+
+    verdict: str = Field(default=AVVerdictEnum.error, max_length=20)
+    reasons: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+
+    duration_sec: float = Field(default=0.0)
+    video_fps: float = Field(default=0.0)
+    frame_count: int = Field(default=0)
+    frames_with_face: int = Field(default=0)
+    face_coverage: float = Field(default=0.0)
+
+    speech_seconds: float = Field(default=0.0)
+    speech_ratio: float = Field(default=0.0)
+    distinct_voice_clusters: int = Field(default=0)
+
+    # The headline signal: of the time the microphone was capturing speech,
+    # what fraction did the visible mouth actually move?
+    mouth_active_ratio_during_speech: float = Field(default=0.0)
+    mouth_active_ratio_during_silence: float = Field(default=0.0)
+    mouth_active_ratio_overall: float = Field(default=0.0)
+
+    metrics: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=timezone_utils.get_ist_now)
     is_deleted: bool = Field(default=False)
 
 

@@ -26,6 +26,12 @@ def main():
     create_db_and_tables()
     consts._load_interview_configs()
 
+    # Probe ffmpeg before any traffic arrives. Without this a missing binary
+    # only shows up as every answer clip failing one at a time in production.
+    from app.utils import ffmpeg_utils
+
+    ffmpeg_utils.verify_at_startup()
+
     logger.info("Preloading proctoring models...")
     from app.services.ai_interviewer.proctoring import ProctoringEngine
 
@@ -43,6 +49,16 @@ def main():
     )
     image_thread.start()
     logger.info("analyze_image_worker: thread started.")
+
+    from app.services import av_analysis_worker
+
+    av_thread = threading.Thread(
+        target=av_analysis_worker.run_worker,
+        daemon=True,
+        name="av-analysis-worker",
+    )
+    av_thread.start()
+    logger.info("av_analysis_worker: thread started.")
 
     analysis_worker = AnalysisWorker()
     analysis_worker.start()

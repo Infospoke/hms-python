@@ -1314,6 +1314,227 @@ async def submit_answer(
         )
 
 
+# Containers a browser MediaRecorder can produce for a combined A/V clip.
+ANSWER_CLIP_EXTENSIONS = {
+    "video/webm": ".webm",
+    "video/x-matroska": ".webm",
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+}
+
+
+def _resolve_answer_clip_format(upload: UploadFile) -> tuple[str, str]:
+    """Pick the extension and content type to store an answer clip under.
+
+    The real container format is preserved so ffmpeg and OpenCV can demux it
+    downstream instead of guessing from a renamed file.
+    """
+    content_type = (upload.content_type or "").split(";")[0].strip().lower()
+    extension = ANSWER_CLIP_EXTENSIONS.get(content_type)
+
+    if extension is None:
+        suffix = Path(upload.filename or "").suffix.lower()
+        if suffix in set(ANSWER_CLIP_EXTENSIONS.values()):
+            extension = suffix
+            content_type = next(
+                ct for ct, ext in ANSWER_CLIP_EXTENSIONS.items() if ext == suffix
+            )
+
+    if extension is None:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                f"Unsupported clip format '{upload.content_type}'. "
+                f"Supported: {', '.join(sorted(ANSWER_CLIP_EXTENSIONS))}."
+            ),
+        )
+    return extension, content_type
+
+
+@router.post("/submit-answer-av", status_code=status.HTTP_202_ACCEPTED)
+async def submit_answer_av(
+    interview_session_id: Annotated[str, Form()],
+    question_index: Annotated[
+        int, Form(description="1-based, matches the answer submitted to /submit-answer.")
+    ],
+    clip: Annotated[
+        UploadFile,
+        File(description="Combined audio+video recording of this answer."),
+    ],
+    session: Session = Depends(deps.get_session),
+):
+    """Submit the audio/visual recording of one answer for proctoring analysis.
+
+    Runs alongside /submit-answer rather than replacing it: the existing audio
+    path still owns transcription and scoring, and nothing here can affect a
+    candidate's result. The clip exists only to answer whether the person on
+    camera was the one speaking.
+
+    Because the browser records both tracks from a single MediaStream, audio
+    and video inside the clip share a container clock - which is what makes the
+    comparison possible at all.
+
+    The clip is stored, queued, and analysed out of band. A clip that analyses
+    clean is deleted immediately afterwards.
+    """
+    import asyncio
+
+    logger.info(
+        f"submit-answer-av Q{question_index} for session {interview_session_id} "
+        f"(file={clip.filename!r}, type={clip.content_type!r})"
+    )
+
+    interview_analysis = session.exec(
+        select(models.InterviewAnalysis).where(
+            models.InterviewAnalysis.interview_session_id == interview_session_id
+        )
+    ).first()
+
+    if not interview_analysis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found"
+        )
+
+    extension, content_type = _resolve_answer_clip_format(clip)
+
+    max_clip_bytes = consts.MAX_ANSWER_CLIP_BYTES
+    if clip.size is not None and clip.size > max_clip_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Answer clip exceeds the maximum allowed size.",
+        )
+
+    try:
+        clip_bytes = await clip.read()
+    finally:
+        await clip.close()
+
+    if not clip_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Empty clip payload."
+        )
+    if len(clip_bytes) > max_clip_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Answer clip exceeds the maximum allowed size.",
+        )
+
+    def run_store():
+        folder_name = db_operations.get_candidate_proctoring_folder(
+            interview_session_id
+        )
+        timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
+        filename = (
+            f"clip_{interview_session_id}_{question_index}_{timestamp_str}{extension}"
+        )
+        clip_key = f"ai-interviews/av-clips/{folder_name}/{filename}"
+
+        result = aws_helper.upload_bytes(
+            clip_bytes, clip_key, content_type=content_type
+        )
+        if not result.get("success"):
+            raise Exception(f"MinIO upload failed: {result.get('error')}")
+        return clip_key
+
+    try:
+        clip_key = await asyncio.to_thread(run_store)
+    except Exception as e:
+        logger.error(f"Error storing answer clip: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store answer clip.",
+        )
+
+    from app.services import kafka_helper
+
+    # Only the object key is queued - a clip is far larger than Kafka's
+    # message ceiling, so the media stays in MinIO.
+    queued = kafka_helper.send_av_analysis_task(
+        payload={
+            "interview_session_id": interview_session_id,
+            "question_index": question_index,
+            "clip_key": clip_key,
+            "extension": extension,
+        },
+        message_group_id=interview_session_id,
+    )
+
+    if not queued.get("success"):
+        # The clip is already stored; leaving it orphaned would be worse than
+        # removing it, since nothing else will ever pick it up.
+        aws_helper.delete_s3_object(clip_key)
+        logger.error(f"Failed to enqueue av-analysis: {queued.get('error')}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to queue clip for analysis. Please retry.",
+        )
+
+    return {
+        "message": "clip-queued",
+        "question_index": question_index,
+        "status": "processing",
+        "size_bytes": len(clip_bytes),
+    }
+
+
+@router.get("/av-analysis")
+def get_av_analysis(
+    interview_session_id: str = Query(...),
+    session: Session = Depends(deps.get_session),
+):
+    """Per-answer audio/visual analysis results for one session.
+
+    Evidence for a human reviewer. These figures never feed the candidate's
+    score, and `not_measurable` means the clip could not be judged - poor
+    lighting, an obscured mouth, too little speech - not that anything was
+    wrong.
+    """
+    rows = session.exec(
+        select(models.AnswerAVAnalysis)
+        .where(
+            models.AnswerAVAnalysis.interview_session_id == interview_session_id,
+            models.AnswerAVAnalysis.is_deleted == False,  # noqa: E712
+        )
+        .order_by(models.AnswerAVAnalysis.question_index)
+    ).all()
+
+    results = [
+        {
+            "question_index": row.question_index,
+            "verdict": row.verdict,
+            "reasons": row.reasons,
+            "duration_sec": row.duration_sec,
+            "video_fps": row.video_fps,
+            "face_coverage": row.face_coverage,
+            "speech_seconds": row.speech_seconds,
+            "mouth_active_ratio_during_speech": row.mouth_active_ratio_during_speech,
+            "mouth_active_ratio_during_silence": row.mouth_active_ratio_during_silence,
+            "distinct_voice_clusters": row.distinct_voice_clusters,
+            "clip_retained": row.clip_retained,
+            "clip_path": row.clip_path,
+            "metrics": row.metrics,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
+
+    counts = {}
+    for row in rows:
+        counts[row.verdict] = counts.get(row.verdict, 0) + 1
+
+    return {
+        "interview_session_id": interview_session_id,
+        "analysed_answers": len(results),
+        "verdict_counts": counts,
+        "shadow_mode": consts.AV_SHADOW_MODE,
+        "results": results,
+        "disclaimer": (
+            "Advisory signals for human review only. These do not affect the "
+            "candidate's score and are not evidence of cheating on their own."
+        ),
+    }
+
+
 @router.post("/complete-interview")
 async def complete_interview(
     data: Annotated[CompleteInterviewRequest, Form(media_type="multipart/form-data")],

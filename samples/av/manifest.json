@@ -1,0 +1,103 @@
+[
+  {
+    "file": "01_clean_normal_answer.webm",
+    "description": "Candidate answers normally - mouth moves in time with their speech.",
+    "expected_verdict": "clean",
+    "observed_verdict": "clean",
+    "speech_seconds": 12.5,
+    "face_coverage": 1.0,
+    "mouth_active_ratio_during_speech": 0.9947,
+    "distinct_voice_clusters": 1,
+    "reasons": []
+  },
+  {
+    "file": "02_suspicious_helper_answering.webm",
+    "description": "Someone off-camera answers: speech is recorded while the candidate's mouth stays still and their face is clearly visible.",
+    "expected_verdict": "suspicious",
+    "observed_verdict": "suspicious",
+    "speech_seconds": 12.45,
+    "face_coverage": 1.0,
+    "mouth_active_ratio_during_speech": 0.0,
+    "distinct_voice_clusters": 5,
+    "reasons": [
+      "mouth moved during only 0% of 12.5s of recorded speech (threshold 20%)"
+    ]
+  },
+  {
+    "file": "03_clean_two_voices_not_flagged.webm",
+    "description": "Two distinct voices within one answer. Reads CLEAN by default: the voice-cluster signal is too unreliable to flag on (AV_ENABLE_MULTI_VOICE_FLAG is off), and the candidate's mouth is moving throughout.",
+    "expected_verdict": "clean",
+    "observed_verdict": "clean",
+    "speech_seconds": 12.4,
+    "face_coverage": 1.0,
+    "mouth_active_ratio_during_speech": 1.0,
+    "distinct_voice_clusters": 1,
+    "reasons": []
+  },
+  {
+    "file": "04_not_measurable_no_face.webm",
+    "description": "Speech recorded but no face in frame - must NOT be called suspicious.",
+    "expected_verdict": "not_measurable",
+    "observed_verdict": "not_measurable",
+    "speech_seconds": 12.5,
+    "face_coverage": 0.0,
+    "mouth_active_ratio_during_speech": 0.0,
+    "distinct_voice_clusters": 2,
+    "reasons": [
+      "face visible for only 0% of speech, below the 50% minimum"
+    ]
+  },
+  {
+    "file": "05_not_measurable_too_dark.webm",
+    "description": "Candidate in near-darkness - a poorly-lit room must read as unmeasurable, never as cheating.",
+    "expected_verdict": "not_measurable",
+    "observed_verdict": "not_measurable",
+    "speech_seconds": 12.55,
+    "face_coverage": 0.0,
+    "mouth_active_ratio_during_speech": 0.0,
+    "distinct_voice_clusters": 4,
+    "reasons": [
+      "face visible for only 0% of speech, below the 50% minimum"
+    ]
+  },
+  {
+    "file": "06_not_measurable_too_short.webm",
+    "description": "Very short answer - too little speech for the comparison to mean anything.",
+    "expected_verdict": "not_measurable",
+    "observed_verdict": "not_measurable",
+    "speech_seconds": 1.8,
+    "face_coverage": 1.0,
+    "mouth_active_ratio_during_speech": 1.0,
+    "distinct_voice_clusters": 1,
+    "reasons": [
+      "only 1.8s of speech detected, below the 3.0s minimum"
+    ]
+  },
+  {
+    "file": "07_not_measurable_silent_thinking.webm",
+    "description": "Candidate sits quietly thinking - still mouth AND no speech. Nothing to judge, so nothing is alleged.",
+    "expected_verdict": "not_measurable",
+    "observed_verdict": "not_measurable",
+    "speech_seconds": 0.0,
+    "face_coverage": 1.0,
+    "mouth_active_ratio_during_speech": 0.0,
+    "distinct_voice_clusters": 0,
+    "reasons": [
+      "only 0.0s of speech detected, below the 3.0s minimum",
+      "face visible for only 0% of speech, below the 50% minimum"
+    ]
+  },
+  {
+    "file": "08_not_measurable_face_intermittent.webm",
+    "description": "Face visible for only part of the answer - below the coverage floor, so the clip is unmeasurable rather than suspicious.",
+    "expected_verdict": "not_measurable",
+    "observed_verdict": "not_measurable",
+    "speech_seconds": 12.65,
+    "face_coverage": 0.2917,
+    "mouth_active_ratio_during_speech": 1.0,
+    "distinct_voice_clusters": 2,
+    "reasons": [
+      "face visible for only 22% of speech, below the 50% minimum"
+    ]
+  }
+]

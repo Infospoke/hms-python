@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Answer Clip Proctoring - Local Test Harness</title>
+<style>
+  :root {
+    --bg: #0b0f18;
+    --panel: #141a28;
+    --panel-2: #1c2436;
+    --line: rgba(255,255,255,.09);
+    --text: #eef1f6;
+    --muted: #97a1b3;
+    --accent: #3b82f6;
+    --danger: #ef4444;
+    --ok: #10b981;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 60px;
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: .9rem; }
+  .grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px;
+  }
+  .card h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); margin: 0 0 14px; font-weight: 600; }
+  video {
+    width: 100%; aspect-ratio: 4/3; background: #05070d;
+    border-radius: 10px; object-fit: cover; transform: scaleX(-1);
+  }
+  label { display: block; font-size: .75rem; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--muted); margin: 12px 0 5px; font-weight: 600; }
+  input, select {
+    width: 100%; padding: 10px 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--text); font: inherit; font-size: .9rem;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  button {
+    width: 100%; margin-top: 14px; padding: 12px 16px; border: none;
+    border-radius: 9px; background: var(--accent); color: #fff;
+    font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.1); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.rec { background: var(--danger); }
+  button.ghost { background: var(--panel-2); border: 1px solid var(--line); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px;
+    border-radius: 20px; font-size: .78rem; font-weight: 600;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .rec-on { background: rgba(239,68,68,.14); color: #fca5a5; }
+  .rec-off { background: rgba(255,255,255,.06); color: var(--muted); }
+  .timer { font-variant-numeric: tabular-nums; font-size: 1.05rem; font-weight: 600; }
+  .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  pre {
+    background: #05070d; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; font-size: .74rem; line-height: 1.45; max-height: 300px;
+    overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-word;
+  }
+  .log { font-size: .76rem; max-height: 200px; overflow: auto; }
+  .log div { padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+  .log .err { color: #fca5a5; }
+  .log .ok { color: #6ee7b7; }
+  table { width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: 4px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; }
+  .v-clean { color: var(--ok); font-weight: 600; }
+  .v-suspicious { color: var(--danger); font-weight: 600; }
+  .v-not_measurable { color: var(--warn); font-weight: 600; }
+  .v-error { color: var(--muted); font-weight: 600; }
+  .note {
+    margin-top: 14px; padding: 11px 13px; border-radius: 9px; font-size: .78rem;
+    background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.22);
+    color: #fcd34d; line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Answer Clip Proctoring — Test Harness</h1>
+  <p class="sub">
+    Records one combined audio+video clip per answer from a single MediaStream
+    and posts it to <code>/api/interview/submit-answer-av</code>. Local testing only.
+  </p>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <div class="head">
+          <h2 style="margin:0">Camera &amp; Microphone</h2>
+          <span id="recBadge" class="badge rec-off"><span class="dot"></span><span id="recText">Idle</span></span>
+        </div>
+        <video id="preview" autoplay playsinline muted></video>
+        <!-- Live input level. A clip whose audio track records silence looks
+             identical to a normal one until the server analyses it, so the
+             level is shown here before anything is recorded. -->
+        <div style="margin-top:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <label style="margin:0">Microphone Input</label>
+            <span id="micStatus" style="font-size:.78rem;color:var(--muted)">not started</span>
+          </div>
+          <div style="height:10px;background:var(--panel-2);border:1px solid var(--line);
+                      border-radius:6px;overflow:hidden;margin-top:6px">
+            <div id="micBar" style="height:100%;width:0%;background:var(--ok);
+                                    transition:width .08s linear"></div>
+          </div>
+          <div id="micWarn" class="note" style="display:none">
+            No microphone signal detected. Recording now would capture silent
+            audio and every answer would come back <strong>not_measurable</strong>.
+            Check that the right input device is selected and that it is not muted.
+          </div>
+        </div>
+
+        <div class="head" style="margin:14px 0 0">
+          <span class="timer" id="timer">00:00</span>
+          <span style="color:var(--muted);font-size:.8rem" id="sizeInfo">—</span>
+        </div>
+        <div class="row">
+          <button id="recBtn" disabled>Start Recording</button>
+        </div>
+        <div class="note">
+          Test both cases: (1) answer normally — expect <strong>clean</strong>;
+          (2) stay still and silent while someone off-camera speaks — expect
+          <strong>suspicious</strong>. Cover your mouth or kill the lights to
+          check it returns <strong>not_measurable</strong> rather than accusing you.
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <h2>Analysis Results</h2>
+        <div class="row" style="margin-bottom:10px">
+          <button id="refreshBtn" class="ghost" style="margin:0">Refresh Results</button>
+        </div>
+        <div id="resultsBox"><p style="color:var(--muted);font-size:.85rem;margin:0">
+          No results yet. Record an answer, then refresh — analysis runs
+          asynchronously in the worker and takes a few seconds.</p></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Session</h2>
+        <label for="apiBase">API Base URL</label>
+        <input id="apiBase" value="http://127.0.0.1:5002">
+
+        <label for="sessionId">Interview Session ID</label>
+        <input id="sessionId" placeholder="e.g. 75">
+
+        <label for="qIndex">Question Index (1-based)</label>
+        <input id="qIndex" type="number" value="1" min="1">
+
+        <!-- Explicit device choice. Chrome's remembered default can be a
+             paired-but-disconnected headset, which opens successfully and
+             then delivers pure silence - indistinguishable from a working
+             mic until the clip is analysed. -->
+        <label for="micDevice">Microphone</label>
+        <select id="micDevice">
+          <option value="">Browser default</option>
+        </select>
+
+        <label for="resolution">Capture Resolution</label>
+        <select id="resolution">
+          <option value="640x480">640 × 480 (recommended)</option>
+          <option value="1280x720">1280 × 720</option>
+          <option value="320x240">320 × 240 (stress test)</option>
+        </select>
+
+        <label for="fps">Frame Rate</label>
+        <select id="fps">
+          <option value="15">15 fps (recommended)</option>
+          <option value="24">24 fps</option>
+          <option value="10">10 fps (minimum useful)</option>
+        </select>
+
+        <button id="startCamBtn">Enable Camera &amp; Mic</button>
+        <button id="stopCamBtn" class="ghost" disabled>Stop Camera</button>
+      </div>
+
+      <div class="card" style="margin-top:20px">
+        <h2>Activity Log</h2>
+        <div id="log" class="log"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let stream = null, recorder = null, chunks = [], startedAt = 0, timerHandle = null;
+let audioCtx = null, meterHandle = null;
+
+function log(msg, cls = '') {
+  const row = document.createElement('div');
+  row.className = cls;
+  row.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
+  $('log').prepend(row);
+}
+
+function setRecording(on) {
+  $('recBadge').className = 'badge ' + (on ? 'rec-on' : 'rec-off');
+  $('recText').textContent = on ? 'Recording' : 'Idle';
+  $('recBtn').textContent = on ? 'Stop & Upload' : 'Start Recording';
+  $('recBtn').className = on ? 'rec' : '';
+}
+
+function tick() {
+  const s = Math.floor((Date.now() - startedAt) / 1000);
+  $('timer').textContent =
+    String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+}
+
+// Pick a container the browser can actually produce. Chrome and Firefox both
+// do WebM; Safari only does MP4, so it is offered as a fallback.
+function pickMimeType() {
+  const candidates = [
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=vp9,opus',
+    'video/webm',
+    'video/mp4',
+  ];
+  return candidates.find(t => MediaRecorder.isTypeSupported(t)) || '';
+}
+
+// Labels are only exposed once permission has been granted, so this runs
+// after the first successful getUserMedia.
+async function populateMicList() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const mics = devices.filter(d => d.kind === 'audioinput');
+    const current = $('micDevice').value;
+    $('micDevice').innerHTML = '<option value="">Browser default</option>' +
+      mics.map(d => `<option value="${d.deviceId}">${d.label || 'Microphone'}</option>`).join('');
+    $('micDevice').value = current;
+    log(`${mics.length} microphone(s) available`);
+  } catch (e) {
+    log(`Could not list microphones: ${e.message}`, 'err');
+  }
+}
+
+// Switching device restarts the stream, since the track is already open.
+$('micDevice').onchange = async () => {
+  if (!stream) return;
+  log('Switching microphone, restarting stream...');
+  stopMeter();
+  stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  $('startCamBtn').disabled = false;
+  await $('startCamBtn').onclick();
+};
+
+$('startCamBtn').onclick = async () => {
+  const [w, h] = $('resolution').value.split('x').map(Number);
+  const fps = Number($('fps').value);
+  const micId = $('micDevice').value;
+  try {
+    // One getUserMedia call for both tracks, so a single MediaRecorder writes
+    // them into one container with a shared clock. That shared clock is the
+    // whole reason the server can compare mouth motion against speech.
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: w }, height: { ideal: h }, frameRate: { ideal: fps }, facingMode: 'user' },
+      audio: {
+        // Left at browser defaults deliberately: this is what production
+        // candidates will send, so the test should capture the same
+        // processing (AGC, noise suppression) the real pipeline sees.
+        echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+        // `exact` so a disconnected device fails loudly instead of silently
+        // falling back to another one.
+        ...(micId ? { deviceId: { exact: micId } } : {}),
+      },
+    });
+    $('preview').srcObject = stream;
+    $('startCamBtn').disabled = true;
+    $('stopCamBtn').disabled = false;
+    $('recBtn').disabled = false;
+    const v = stream.getVideoTracks()[0].getSettings();
+    log(`Camera on: ${v.width}×${v.height} @ ${v.frameRate || '?'}fps`, 'ok');
+
+    const aTrack = stream.getAudioTracks()[0];
+    if (!aTrack) {
+      log('No audio track in the stream - clips will be silent', 'err');
+    } else {
+      log(`Mic track: ${aTrack.label || 'unnamed'} (muted=${aTrack.muted})`,
+          aTrack.muted ? 'err' : 'ok');
+      startMeter(stream);
+      await populateMicList();
+    }
+  } catch (e) {
+    log(`Camera error: ${e.message}`, 'err');
+  }
+};
+
+// Web Audio meter. Reads the same track MediaRecorder will encode, so a flat
+// bar here means the recorded clip really will be silent.
+function startMeter(mediaStream) {
+  stopMeter();
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(mediaStream);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  source.connect(analyser);
+  const buf = new Float32Array(analyser.fftSize);
+  let silentFrames = 0;
+
+  const draw = () => {
+    analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length);
+    const db = 20 * Math.log10(Math.max(rms, 1e-10));
+
+    // -60 dBFS to 0 mapped across the bar.
+    const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+    $('micBar').style.width = pct + '%';
+    $('micBar').style.background =
+      db > -20 ? 'var(--warn)' : db > -50 ? 'var(--ok)' : 'var(--danger)';
+    $('micStatus').textContent = db <= -99 ? 'silent' : `${db.toFixed(0)} dBFS`;
+
+    // ~2s of continuous silence before warning, so a natural pause is ignored.
+    silentFrames = db < -70 ? silentFrames + 1 : 0;
+    $('micWarn').style.display = silentFrames > 120 ? 'block' : 'none';
+
+    meterHandle = requestAnimationFrame(draw);
+  };
+  draw();
+}
+
+function stopMeter() {
+  if (meterHandle) cancelAnimationFrame(meterHandle);
+  meterHandle = null;
+  if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+  $('micBar').style.width = '0%';
+  $('micStatus').textContent = 'not started';
+  $('micWarn').style.display = 'none';
+}
+
+$('stopCamBtn').onclick = () => {
+  stopMeter();
+  if (recorder && recorder.state === 'recording') recorder.stop();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  $('preview').srcObject = null;
+  $('startCamBtn').disabled = false;
+  $('stopCamBtn').disabled = true;
+  $('recBtn').disabled = true;
+  log('Camera stopped');
+};
+
+$('recBtn').onclick = () => {
+  if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
+  if (!stream) { log('Enable the camera first', 'err'); return; }
+
+  const sessionId = $('sessionId').value.trim();
+  if (!sessionId) { log('Interview Session ID is required', 'err'); return; }
+
+  const mimeType = pickMimeType();
+  if (!mimeType) { log('No supported recording format in this browser', 'err'); return; }
+
+  chunks = [];
+  recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 800000 });
+  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = () => {
+    clearInterval(timerHandle);
+    setRecording(false);
+    const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
+    $('sizeInfo').textContent = (blob.size / 1048576).toFixed(2) + ' MB';
+    upload(blob, sessionId);
+  };
+
+  recorder.start(1000);
+  startedAt = Date.now();
+  timerHandle = setInterval(tick, 500);
+  setRecording(true);
+  log(`Recording started (${mimeType})`);
+};
+
+async function upload(blob, sessionId) {
+  const qIndex = $('qIndex').value;
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  const form = new FormData();
+  form.append('interview_session_id', sessionId);
+  form.append('question_index', qIndex);
+  form.append('clip', blob, `answer_${qIndex}.${ext}`);
+
+  log(`Uploading ${(blob.size / 1048576).toFixed(2)} MB for Q${qIndex}...`);
+  try {
+    const res = await fetch(`${$('apiBase').value.replace(/\/$/, '')}/api/interview/submit-answer-av`, {
+      method: 'POST', body: form,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      log(`Upload failed (${res.status}): ${body.detail || res.statusText}`, 'err');
+      return;
+    }
+    log(`Queued for analysis (Q${qIndex}). Refresh results in a few seconds.`, 'ok');
+    $('qIndex').value = String(Number(qIndex) + 1);
+  } catch (e) {
+    log(`Upload error: ${e.message}`, 'err');
+  }
+}
+
+$('refreshBtn').onclick = async () => {
+  const sessionId = $('sessionId').value.trim();
+  if (!sessionId) { log('Interview Session ID is required', 'err'); return; }
+  try {
+    const url = `${$('apiBase').value.replace(/\/$/, '')}/api/interview/av-analysis?interview_session_id=${encodeURIComponent(sessionId)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) { log(`Fetch failed: ${data.detail || res.statusText}`, 'err'); return; }
+    render(data);
+    log(`Loaded ${data.analysed_answers} analysed answer(s)`, 'ok');
+  } catch (e) {
+    log(`Fetch error: ${e.message}`, 'err');
+  }
+};
+
+function render(data) {
+  const box = $('resultsBox');
+  if (!data.results || !data.results.length) {
+    box.innerHTML = '<p style="color:var(--muted);font-size:.85rem;margin:0">No analysed answers yet for this session.</p>';
+    return;
+  }
+  const rows = data.results.map(r => `
+    <tr>
+      <td>Q${r.question_index}</td>
+      <td class="v-${r.verdict}">${r.verdict}</td>
+      <td>${r.duration_sec ?? '—'}s</td>
+      <td>${r.video_fps ?? '—'}</td>
+      <td>${r.speech_seconds ?? '—'}s</td>
+      <td>${r.face_coverage != null ? (r.face_coverage * 100).toFixed(0) + '%' : '—'}</td>
+      <td>${r.mouth_active_ratio_during_speech != null ? (r.mouth_active_ratio_during_speech * 100).toFixed(0) + '%' : '—'}</td>
+      <td>${r.distinct_voice_clusters ?? '—'}</td>
+      <td>${r.clip_retained ? 'kept' : 'deleted'}</td>
+    </tr>
+    ${r.reasons && r.reasons.length
+      ? `<tr><td colspan="9" style="color:var(--muted);font-size:.75rem;padding-top:0">↳ ${r.reasons.join(' · ')}</td></tr>`
+      : ''}
+  `).join('');
+
+  box.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Q</th><th>Verdict</th><th>Len</th><th>FPS</th><th>Speech</th>
+        <th>Face</th><th>Mouth/Speech</th><th>Voices</th><th>Clip</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="note">${data.disclaimer}</div>
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:.8rem">Raw JSON</summary>
+      <pre style="margin-top:8px">${JSON.stringify(data, null, 2)}</pre>
+    </details>`;
+}
+</script>
+</body>
+</html>
