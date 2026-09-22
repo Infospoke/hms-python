@@ -10,11 +10,26 @@ from app.services.ai_interviewer.analysis_worker import AnalysisWorker
 from app.core import config as consts
 from app.db.session import create_db_and_tables
 
+# Mirrors run.py: never let an un-encodable character discard a log record.
+# The worker's most valuable lines carry transcripts and exception text, which
+# are exactly the ones most likely to contain non-ASCII.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 if os.path.exists("logging.conf"):
+    # `import logging` alone does not provide logging.config, so this branch
+    # previously raised AttributeError whenever a logging.conf was present.
+    import logging.config
+
     logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
 else:
     logging.basicConfig(
-        level=logging.INFO, format="%(name)s - %(levelname)s: %(message)s"
+        level=logging.INFO,
+        format="%(name)s - %(levelname)s: %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
     )
 
 logger = logging.getLogger(__name__)
