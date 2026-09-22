@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 
 class AnalysisWorker(threading.Thread):
 
+    # How many times to re-attempt fetching an answer's audio before declaring
+    # it lost. Only transport failures are retried; an object MinIO reports as
+    # absent is terminal immediately.
+    MAX_AUDIO_FETCH_ATTEMPTS = 3
+
+    # Pause after a retryable fetch failure. The worker is sequential, so
+    # without this a single unreachable object would be re-claimed in a tight
+    # loop and starve every other pending answer.
+    AUDIO_FETCH_RETRY_DELAY_SECONDS = 10
+
     def __init__(self):
         super().__init__()
         self.daemon = True
@@ -165,17 +175,57 @@ class AnalysisWorker(threading.Thread):
                                 )
                         return
                 else:
-                    logger.error(f"Audio file missing in S3: {s3_key}")
+                    # The audio path is DELIBERATELY preserved in answer_text.
+                    # Overwriting it with an error message used to throw away
+                    # the only pointer to the recording, so an answer whose
+                    # audio was sitting safely in MinIO could never be
+                    # recovered - a transient fetch failure permanently
+                    # destroyed a candidate's answer.
+                    not_found = s3_result.get("not_found", False)
+                    attempts = 0
+                    if isinstance(existing_ai_analysis, dict):
+                        attempts = int(existing_ai_analysis.get("fetch_attempts", 0))
+                    attempts += 1
+
+                    # Only a genuinely absent object is terminal. Anything else
+                    # (unreachable MinIO, timeout, a second worker pointed at a
+                    # different MinIO) is retried on a later pass.
+                    give_up = not_found or attempts >= self.MAX_AUDIO_FETCH_ATTEMPTS
+                    state = {
+                        "status": "error" if give_up else "audio_fetch_failed",
+                        "fetch_attempts": attempts,
+                        "audio_path": s3_key,
+                        "reason": s3_result.get("error"),
+                        "not_found": not_found,
+                    }
+
+                    logger.error(
+                        f"Audio fetch failed for response {response_id} "
+                        f"(attempt {attempts}/{self.MAX_AUDIO_FETCH_ATTEMPTS}, "
+                        f"not_found={not_found}): {s3_key}"
+                        + ("" if give_up else " - will retry")
+                    )
+                    if give_up and not not_found:
+                        logger.error(
+                            f"Giving up on response {response_id} after "
+                            f"{attempts} attempts. The audio may still exist at "
+                            f"{s3_key}; check that only ONE analysis worker runs "
+                            "against this database and that it points at the "
+                            "MinIO that received the upload."
+                        )
+
                     with Session(self.engine) as session:
                         response_obj = session.get(models.QNA_Analysis, response_id)
                         if response_obj:
-                            response_obj.answer_text = "Audio file missing"
-                            response_obj.ai_analysis = {"status": "error"}
+                            response_obj.ai_analysis = state
                             session.add(response_obj)
                             session.commit()
-                            self.check_interview_completion(
-                                session, response_obj.interview_analysis_id
-                            )
+                            if give_up:
+                                self.check_interview_completion(
+                                    session, response_obj.interview_analysis_id
+                                )
+                    if not give_up:
+                        time.sleep(self.AUDIO_FETCH_RETRY_DELAY_SECONDS)
                     return
 
             with Session(self.engine) as session:

@@ -253,18 +253,48 @@ def upload_audio(audio_bytes, object_name, content_type="audio/wav"):
 
 
 def get_audio_bytes(object_name):
-    """Retrieve audio bytes from MinIO."""
+    """Retrieve audio bytes from MinIO.
+
+    Distinguishes "the object is not there" from "we could not reach MinIO".
+    Callers need that difference: a genuinely absent object is permanent, while
+    a transport failure is worth retrying, and previously both produced the
+    same opaque result and cost the candidate their answer.
+    """
     bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
     logger.info(f"MinIO: fetching audio '{object_name}'")
+    response = None
     try:
         minio_client = get_minio_client()
         response = minio_client.get_object(bucket_name, object_name)
         audio_bytes = response.read()
-        logger.info(f"MinIO: successfully fetched audio '{object_name}'")
+        logger.info(
+            f"MinIO: successfully fetched audio '{object_name}' "
+            f"({len(audio_bytes)} bytes)"
+        )
         return {"success": True, "audio_bytes": audio_bytes}
     except Exception as e:
-        logger.error(f"MinIO: error fetching audio '{object_name}': {e}")
-        return {"success": False, "error": f"Failed to fetch audio from MinIO: {e}"}
+        # S3Error with code NoSuchKey means the object really is absent.
+        # Anything else (timeout, refused connection, DNS) is transient.
+        not_found = getattr(e, "code", None) in ("NoSuchKey", "NoSuchBucket")
+        logger.error(
+            f"MinIO: error fetching audio '{object_name}' from "
+            f"endpoint={consts.MINIO_HOST} bucket={bucket_name}: "
+            f"{type(e).__name__}: {e}"
+        )
+        return {
+            "success": False,
+            "not_found": not_found,
+            "error": f"Failed to fetch audio from MinIO: {e}",
+        }
+    finally:
+        # Without this the pooled HTTP connection is never handed back, and a
+        # long-running worker slowly starves its own connection pool.
+        if response is not None:
+            try:
+                response.close()
+                response.release_conn()
+            except Exception:
+                pass
 
 
 def delete_object(object_name):
