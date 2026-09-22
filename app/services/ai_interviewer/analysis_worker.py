@@ -26,12 +26,75 @@ class AnalysisWorker(threading.Thread):
     # loop and starve every other pending answer.
     AUDIO_FETCH_RETRY_DELAY_SECONDS = 10
 
+    # Postgres advisory-lock key identifying "the" analysis worker. Arbitrary
+    # but must stay stable across deployments.
+    SINGLETON_LOCK_KEY = 847261903
+
     def __init__(self):
         super().__init__()
         self.daemon = True
         self.engine = create_engine(DATABASE_URL, echo=False)
+        self._lock_conn = None
+
+    def _acquire_singleton_lock(self):
+        """Claim exclusive right to process answers for this database.
+
+        Answer audio lives in the MinIO of whichever host received the upload,
+        but the database is shared. A second worker on another host therefore
+        claims rows it can never fetch the audio for, and reports them as
+        missing - silently destroying answers that were perfectly intact. The
+        rows are split between workers by skip_locked, so the damage looks
+        random and intermittent, which is exactly how it presented.
+
+        A session-level advisory lock is held for the worker's lifetime and is
+        released automatically by Postgres if the process dies.
+        """
+        if os.environ.get("ALLOW_MULTIPLE_ANALYSIS_WORKERS", "").lower() in (
+            "1", "true", "yes",
+        ):
+            logger.warning(
+                "ALLOW_MULTIPLE_ANALYSIS_WORKERS is set - skipping the "
+                "single-worker lock. Only do this when every worker shares one "
+                "MinIO, otherwise answers will be lost."
+            )
+            return True
+
+        if "postgresql" not in (DATABASE_URL or "").lower():
+            return True  # advisory locks are Postgres-only
+
+        try:
+            conn = self.engine.connect()
+            acquired = conn.exec_driver_sql(
+                f"SELECT pg_try_advisory_lock({self.SINGLETON_LOCK_KEY})"
+            ).scalar()
+            if acquired:
+                # Detach from the pool. An advisory lock belongs to a Postgres
+                # session, so a pooled connection would both keep the lock
+                # alive after close() and risk handing a lock-holding session
+                # to unrelated queries.
+                conn.detach()
+                self._lock_conn = conn  # held for the process lifetime
+                return True
+            conn.close()
+            return False
+        except Exception as e:
+            # Never let a lock problem stop answers being processed entirely.
+            logger.error(f"Could not evaluate analysis-worker lock ({e}); continuing.")
+            return True
 
     def run(self):
+        if not self._acquire_singleton_lock():
+            logger.error(
+                "ANOTHER ANALYSIS WORKER IS ALREADY RUNNING against this "
+                "database, so this one will NOT process answers. Two workers "
+                "split the pending answers between them, and whichever host "
+                "does not hold the audio reports 'Audio file missing' and "
+                "loses the answer. Stop the other instance, or set "
+                "ALLOW_MULTIPLE_ANALYSIS_WORKERS=1 if they genuinely share "
+                "one MinIO."
+            )
+            return
+
         logger.info("Background Analysis Worker Started (Sequential mode)")
         while True:
             try:
