@@ -45,6 +45,7 @@ def ensure_bucket_exists(bucket_name):
 
 def fetch_resume(resume_name):
     logger.info(f"MinIO: fetching resume '{resume_name}'")
+    response = None
     try:
         minio_client = get_minio_client()
         bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
@@ -68,6 +69,13 @@ def fetch_resume(resume_name):
     except Exception as e:
         logger.error(f"MinIO: fetch error for '{resume_name}': {e}")
         return {"success": False, "error": f"Failed to fetch resume from MinIO: {e}"}
+    finally:
+        if response is not None:
+            try:
+                response.close()
+                response.release_conn()
+            except Exception:
+                pass
 
 
 def upload_file(file_path, object_name=None):
@@ -208,6 +216,7 @@ def list_proctoring_images(interview_session_id=None):
 def get_image_base64(image_key):
     logger.info(f"MinIO: retrieving base64 for key '{image_key}'")
     bucket_name = consts.INFOSPOKE_S3_BUCKET_NAME
+    response = None
     try:
         image_key = (
             image_key.split(f"/{bucket_name}/")[-1]
@@ -225,9 +234,20 @@ def get_image_base64(image_key):
         return f"data:{content_type};base64,{base64_image}"
     except Exception as e:
         logger.error(
-            f"MinIO: unexpected error in get_image_base64 for '{image_key}': {e}"
+            f"MinIO: unexpected error in get_image_base64 for '{image_key}': "
+            f"{type(e).__name__}: {e}"
         )
         return None
+    finally:
+        # Reports fetch one image per proctoring event, so a leak here burns
+        # through the HTTP connection pool faster than anywhere else in the
+        # service and starves later MinIO calls.
+        if response is not None:
+            try:
+                response.close()
+                response.release_conn()
+            except Exception:
+                pass
 
 
 def upload_audio(audio_bytes, object_name, content_type="audio/wav"):
