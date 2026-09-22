@@ -1351,11 +1351,52 @@ def _resolve_answer_clip_format(upload: UploadFile) -> tuple[str, str]:
     return extension, content_type
 
 
+def _extract_answer_audio(clip_bytes: bytes, extension: str) -> tuple[bytes, str, str]:
+    """Pull the audio track out of an answer clip for transcription.
+
+    Returns 16 kHz mono WAV, which is what Whisper and the librosa voice
+    metrics both want, and is markedly smaller than re-storing the video.
+
+    If ffmpeg is unavailable or the demux fails, the original clip is returned
+    unchanged: /submit-answer already accepts video containers and the
+    transcription path can decode them, so a broken extraction degrades to a
+    larger upload rather than a lost answer.
+    """
+    import os
+    import tempfile
+
+    tmpdir = tempfile.mkdtemp()
+    clip_path = os.path.join(tmpdir, f"clip{extension}")
+    wav_path = clip_path + ".wav"
+    try:
+        with open(clip_path, "wb") as handle:
+            handle.write(clip_bytes)
+
+        from app.services.ai_interviewer.av_analysis import _extract_audio
+
+        _extract_audio(clip_path, wav_path)
+        with open(wav_path, "rb") as handle:
+            return handle.read(), ".wav", "audio/wav"
+    except Exception as e:
+        logger.error(
+            f"Could not extract audio from answer clip ({e}); falling back to "
+            "storing the clip itself as the answer."
+        )
+        return clip_bytes, extension, "video/mp4" if extension == ".mp4" else "video/webm"
+    finally:
+        for path in (wav_path, clip_path):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                pass
+
+
 @router.post("/submit-answer-av", status_code=status.HTTP_202_ACCEPTED)
 async def submit_answer_av(
     interview_session_id: Annotated[str, Form()],
     question_index: Annotated[
-        int, Form(description="1-based, matches the answer submitted to /submit-answer.")
+        int, Form(description="1-based, matches the interview's question order.")
     ],
     clip: Annotated[
         UploadFile,
@@ -1363,19 +1404,26 @@ async def submit_answer_av(
     ],
     session: Session = Depends(deps.get_session),
 ):
-    """Submit the audio/visual recording of one answer for proctoring analysis.
+    """Submit one answer as a combined audio+video recording.
 
-    Runs alongside /submit-answer rather than replacing it: the existing audio
-    path still owns transcription and scoring, and nothing here can affect a
-    candidate's result. The clip exists only to answer whether the person on
-    camera was the one speaking.
+    ONE call per question does everything: the server extracts the audio track
+    for transcription and scoring, and keeps the video for proctoring. Clients
+    do not need to call /submit-answer as well (though doing so is harmless -
+    re-registering the same question repoints its audio instead of duplicating
+    it, and an answer already being analysed is left alone).
+
+    The two jobs are deliberately unequal. Registering the answer is the
+    critical path and its failure returns an error. Storing and queueing the
+    proctoring clip is best-effort: if it fails the answer is still transcribed
+    and scored, and the response says so via `proctoring_queued`.
 
     Because the browser records both tracks from a single MediaStream, audio
     and video inside the clip share a container clock - which is what makes the
-    comparison possible at all.
+    mouth-versus-speech comparison possible at all.
 
-    The clip is stored, queued, and analysed out of band. A clip that analyses
-    clean is deleted immediately afterwards.
+    The audio and the clip are stored as separate MinIO objects: the analysis
+    worker deletes the audio once transcribed, so sharing one object would let
+    whichever pipeline finished first destroy the other's input.
     """
     import asyncio
 
@@ -1420,59 +1468,121 @@ async def submit_answer_av(
         )
 
     def run_store():
+        """Store the answer, then the proctoring clip, in that order.
+
+        The clip already contains the audio, so the client uploads once and the
+        server splits it. Two SEPARATE MinIO objects are written on purpose:
+        the analysis worker deletes the answer audio once it has transcribed it
+        (analysis_worker.py), so if both pipelines shared one object the first
+        to finish would delete the other's input.
+        """
         folder_name = db_operations.get_candidate_proctoring_folder(
             interview_session_id
         )
         timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
-        filename = (
-            f"clip_{interview_session_id}_{question_index}_{timestamp_str}{extension}"
-        )
-        clip_key = f"ai-interviews/av-clips/{folder_name}/{filename}"
 
-        result = aws_helper.upload_bytes(
-            clip_bytes, clip_key, content_type=content_type
+        # --- 1. The answer. This is the critical path: without it nothing is
+        # transcribed or scored, so it is done first and its failure is fatal.
+        audio_bytes, audio_ext, audio_type = _extract_answer_audio(
+            clip_bytes, extension
         )
-        if not result.get("success"):
-            raise Exception(f"MinIO upload failed: {result.get('error')}")
-        return clip_key
+        audio_key = (
+            f"ai-interviews/audio/{folder_name}/"
+            f"audio_{interview_session_id}_{question_index}_{timestamp_str}{audio_ext}"
+        )
+        audio_result = aws_helper.upload_audio_to_s3(
+            audio_bytes, audio_key, content_type=audio_type
+        )
+        if not audio_result.get("success"):
+            raise Exception(
+                f"answer audio upload failed: {audio_result.get('error')}"
+            )
+
+        from app.db.session import engine
+
+        with Session(engine) as db_session:
+            answer_result = db_operations.upsert_pending_answer(
+                db_session, interview_session_id, question_index, audio_key
+            )
+        if not answer_result.get("success"):
+            aws_helper.delete_s3_object(audio_key)
+            raise Exception(
+                f"could not register answer: {answer_result.get('error')}"
+            )
+        logger.info(
+            f"[submit-answer-av] Q{question_index} answer registered from clip "
+            f"audio: {audio_key}"
+        )
+
+        # --- 2. The proctoring clip. Best-effort: a failure here must never
+        # cost the candidate their answer.
+        clip_key = None
+        try:
+            key = (
+                f"ai-interviews/av-clips/{folder_name}/"
+                f"clip_{interview_session_id}_{question_index}_"
+                f"{timestamp_str}{extension}"
+            )
+            clip_result = aws_helper.upload_bytes(
+                clip_bytes, key, content_type=content_type
+            )
+            if clip_result.get("success"):
+                clip_key = key
+            else:
+                logger.error(
+                    f"[submit-answer-av] Q{question_index} clip upload failed, "
+                    f"answer is unaffected: {clip_result.get('error')}"
+                )
+        except Exception as e:
+            logger.error(
+                f"[submit-answer-av] Q{question_index} clip storage errored, "
+                f"answer is unaffected: {e}"
+            )
+
+        return clip_key, answer_result
 
     try:
-        clip_key = await asyncio.to_thread(run_store)
+        clip_key, answer_result = await asyncio.to_thread(run_store)
     except Exception as e:
-        logger.error(f"Error storing answer clip: {e}")
+        logger.error(f"Error storing answer from clip: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to store answer clip.",
+            detail="Failed to store answer.",
         )
 
     from app.services import kafka_helper
 
-    # Only the object key is queued - a clip is far larger than Kafka's
-    # message ceiling, so the media stays in MinIO.
-    queued = kafka_helper.send_av_analysis_task(
-        payload={
-            "interview_session_id": interview_session_id,
-            "question_index": question_index,
-            "clip_key": clip_key,
-            "extension": extension,
-        },
-        message_group_id=interview_session_id,
-    )
-
-    if not queued.get("success"):
-        # The clip is already stored; leaving it orphaned would be worse than
-        # removing it, since nothing else will ever pick it up.
-        aws_helper.delete_s3_object(clip_key)
-        logger.error(f"Failed to enqueue av-analysis: {queued.get('error')}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Failed to queue clip for analysis. Please retry.",
+    # Proctoring analysis is queued best-effort. The answer is already stored
+    # and will be transcribed and scored regardless of what happens here, so a
+    # queue failure is logged rather than returned as an error to the client.
+    proctoring_queued = False
+    if clip_key:
+        # Only the object key is queued - a clip is far larger than Kafka's
+        # message ceiling, so the media stays in MinIO.
+        queued = kafka_helper.send_av_analysis_task(
+            payload={
+                "interview_session_id": interview_session_id,
+                "question_index": question_index,
+                "clip_key": clip_key,
+                "extension": extension,
+            },
+            message_group_id=interview_session_id,
         )
+        proctoring_queued = bool(queued.get("success"))
+        if not proctoring_queued:
+            # Nothing will ever pick the clip up, so do not leave it orphaned.
+            aws_helper.delete_s3_object(clip_key)
+            logger.error(
+                f"Failed to enqueue av-analysis (answer is unaffected): "
+                f"{queued.get('error')}"
+            )
 
     return {
-        "message": "clip-queued",
+        "message": "answer-submitted",
         "question_index": question_index,
         "status": "processing",
+        "answer_registered": True,
+        "proctoring_queued": proctoring_queued,
         "size_bytes": len(clip_bytes),
     }
 
