@@ -32,8 +32,8 @@ class ProctoringEventType(str, Enum):
     clipboard_violation = "Clipboard Violation"
     default = "No Violation"
     candidate_picture = "CANDIDATE_PICTURE"
-    av_mouth_mismatch = "AV_MOUTH_MISMATCH"
-    multiple_voices = "MULTIPLE_VOICES"
+    av_mouth_mismatch = "Lip Sync Mismatch"
+    multiple_voices = "MULTIPLE VOICES"
 
 
 class AVVerdictEnum(str, Enum):

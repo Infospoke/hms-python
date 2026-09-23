@@ -549,9 +549,8 @@ class AVAnswerAnalyzer:
         else:
             if during_speech < consts.AV_MISMATCH_RATIO_THRESHOLD:
                 reasons.append(
-                    f"mouth moved during only {during_speech:.0%} of "
-                    f"{speech_seconds:.1f}s of recorded speech "
-                    f"(threshold {consts.AV_MISMATCH_RATIO_THRESHOLD:.0%})"
+                    f"Mouth Moved During Only {during_speech:.0%} Of "
+                    f"{speech_seconds:.1f}s Of Recorded Speech"
                 )
             if (
                 consts.AV_ENABLE_MULTI_VOICE_FLAG

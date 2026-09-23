@@ -703,8 +703,8 @@ def fetch_interview_analysis(
             "proctoring_logs": [
                 {
                     "id": log.id,
-                    "event_type": log.event_type,
-                    "violation_type": log.event_type,
+                    "event_type": str(log.event_type or "").replace("_", " "),
+                    "violation_type": str(log.event_type or "").replace("_", " "),
                     "tb_severity": log.tb_severity or "low severity",
                     "severity": log.tb_severity or "low severity",
                     "timestamp": (
@@ -717,8 +717,8 @@ def fetch_interview_analysis(
                         if log.timestamp
                         else None
                     ),
-                    "details": log.details,
-                    "description": log.details,
+                    "details": _format_proctoring_details(log.details),
+                    "description": _format_proctoring_details(log.details),
                     "image": log.image_path,
                     "image_path": log.image_path,
                     "image_base64": aws_helper.get_s3_image_base64(log.image_path),
@@ -1919,6 +1919,43 @@ def get_candidate_details(
         )
 
 
+def _format_proctoring_details(details) -> str:
+    import re
+    if not details:
+        return ""
+    result_str = ""
+    if isinstance(details, list):
+        result_str = ", ".join(str(x) for x in details)
+    elif isinstance(details, dict):
+        reasons = details.get("reasons")
+        if reasons:
+            result_str = ", ".join(str(r) for r in reasons) if isinstance(reasons, list) else str(reasons)
+        else:
+            result_str = str(details)
+    elif isinstance(details, str) and (details.startswith("{") or details.startswith("[")):
+        try:
+            parsed = json.loads(details)
+            if isinstance(parsed, list):
+                result_str = ", ".join(str(x) for x in parsed)
+            elif isinstance(parsed, dict):
+                reasons = parsed.get("reasons")
+                if reasons:
+                    result_str = ", ".join(str(r) for r in reasons) if isinstance(reasons, list) else str(reasons)
+                else:
+                    result_str = str(parsed)
+        except Exception:
+            result_str = str(details)
+    else:
+        result_str = str(details)
+        
+    if result_str:
+        result_str = re.sub(r'\s*\(threshold\s+[^)]+\)', '', result_str)
+        if "mouth moved" in result_str.lower():
+            result_str = " ".join([w.capitalize() for w in result_str.split()])
+            
+    return result_str
+
+
 @router.post("/proctoring-log")
 def create_proctoring_log(
     data: ProctoringLogRequest,
@@ -1927,7 +1964,12 @@ def create_proctoring_log(
 ):
     logger.info(f"create-proctoring-log for session {data.interview_session_id}")
 
-    if data.event_type not in models.ProctoringEventType._value2member_map_:
+    event_type_str = str(data.event_type or "").strip()
+    event_type_norm = event_type_str.replace("_", " ")
+    if (
+        event_type_str not in models.ProctoringEventType._value2member_map_
+        and event_type_norm not in models.ProctoringEventType._value2member_map_
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid event_type: {data.event_type}",

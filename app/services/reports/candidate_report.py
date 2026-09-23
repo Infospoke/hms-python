@@ -974,24 +974,50 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             )
             try:
                 if isinstance(p.details, list):
-                    p_details = ", ".join(p.details)
-                elif isinstance(p.details, str) and p.details.startswith("["):
+                    p_details = ", ".join(str(x) for x in p.details)
+                elif isinstance(p.details, dict):
+                    reasons = p.details.get("reasons")
+                    if reasons:
+                        p_details = ", ".join(str(r) for r in reasons) if isinstance(reasons, list) else str(reasons)
+                    else:
+                        p_details = str(p.details)
+                elif isinstance(p.details, str) and (p.details.startswith("[") or p.details.startswith("{")):
                     parsed = json.loads(p.details)
-                    p_details = (
-                        ", ".join(parsed) if isinstance(parsed, list) else str(parsed)
-                    )
+                    if isinstance(parsed, list):
+                        p_details = ", ".join(str(x) for x in parsed)
+                    elif isinstance(parsed, dict):
+                        reasons = parsed.get("reasons")
+                        if reasons:
+                            p_details = ", ".join(str(r) for r in reasons) if isinstance(reasons, list) else str(reasons)
+                        else:
+                            p_details = str(parsed)
+                    else:
+                        p_details = str(parsed)
                 else:
                     p_details = str(p.details)
             except Exception:
                 p_details = str(p.details)
 
+            if p_details:
+                import re
+                p_details = re.sub(r'\s*\(threshold\s+[^)]+\)', '', p_details)
+                if "mouth moved" in p_details.lower():
+                    p_details = " ".join([w.capitalize() for w in p_details.split()])
+
             evidence_flowable = get_violation_image_flowable(
                 getattr(p, "image_path", None), td_center
             )
 
+            raw_ev = (
+                p.get("event_type", "")
+                if isinstance(p, dict)
+                else getattr(p, "event_type", "") or ""
+            )
+            event_type_display = str(raw_ev).replace("_", " ")
+
             row = [
                 Paragraph(str(v_count), td_style),
-                Paragraph(p.event_type, td_style),
+                Paragraph(event_type_display, td_style),
                 Paragraph(p_details or "Detected event", td_style),
                 Paragraph(sev_badge, td_center),
                 Paragraph(ts, td_center),

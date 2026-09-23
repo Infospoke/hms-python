@@ -25,6 +25,11 @@ from app.core import config as consts
 from app.db.session import engine
 from app.services import kafka_helper
 from app.services import minio_helper as aws_helper
+from app.services import db_operations
+from app.utils import timezone_utils
+import cv2
+import os
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +61,40 @@ def _should_retain(verdict: str) -> bool:
     return False
 
 
-def _store_result(payload: dict, result: dict, clip_key: str) -> None:
+def _extract_and_upload_frame(session_id: str, video_bytes: bytes, extension: str, session: Session) -> str:
+    try:
+        with tempfile.NamedTemporaryFile(suffix=extension, delete=False) as f:
+            f.write(video_bytes)
+            tmp_path = f.name
+            
+        try:
+            cap = cv2.VideoCapture(tmp_path)
+            ret, frame = cap.read()
+            cap.release()
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                
+        if not ret or frame is None:
+            return None
+            
+        timestamp_str = timezone_utils.get_ist_now().strftime("%Y%m%d_%H%M%S_%f")
+        image_filename = f"violation_av_mouth_mismatch_{timestamp_str}.jpg"
+        folder_name = db_operations.get_candidate_proctoring_folder(session_id, session)
+        s3_object_name = f"ai-interviews/proctoring/{folder_name}/{image_filename}"
+        
+        _, buffer = cv2.imencode(".jpg", frame)
+        image_bytes = buffer.tobytes()
+        
+        upload_result = aws_helper.upload_image_to_s3(image_bytes, s3_object_name)
+        if upload_result.get("success"):
+            return upload_result.get("s3_url")
+        return None
+    except Exception as e:
+        logger.error(f"AV worker: Failed to extract frame: {e}")
+        return None
+
+def _store_result(payload: dict, result: dict, clip_key: str, video_bytes: bytes = None, extension: str = ".webm") -> None:
     session_id = payload["interview_session_id"]
     question_index = payload.get("question_index")
     verdict = result.get("verdict", models.AVVerdictEnum.error)
@@ -116,8 +154,12 @@ def _store_result(payload: dict, result: dict, clip_key: str) -> None:
         session.add(row)
 
         if verdict == models.AVVerdictEnum.suspicious and not consts.AV_SHADOW_MODE:
+            image_url = None
+            if video_bytes and any("mouth moved" in str(r).lower() for r in result.get("reasons", [])):
+                image_url = _extract_and_upload_frame(session_id, video_bytes, extension, session)
+            
             _log_violations(session, interview_analysis.id, question_index, result,
-                            clip_key if retain else None)
+                            clip_key if retain else None, image_url)
 
         session.commit()
 
@@ -129,7 +171,7 @@ def _store_result(payload: dict, result: dict, clip_key: str) -> None:
     )
 
 
-def _log_violations(session, interview_analysis_id, question_index, result, clip_key):
+def _log_violations(session, interview_analysis_id, question_index, result, clip_key, image_url):
     """Write one ProctoringLogs row per distinct signal that fired.
 
     Severity is intentionally "medium severity" rather than high: neither
@@ -137,7 +179,7 @@ def _log_violations(session, interview_analysis_id, question_index, result, clip
     evidence for a recruiter to review, not a finding.
     """
     reasons = result.get("reasons", [])
-    mouth_reasons = [r for r in reasons if "mouth moved" in r]
+    mouth_reasons = [r for r in reasons if "mouth moved" in r.lower()]
     voice_reasons = [r for r in reasons if "voice clusters" in r]
 
     for event_type, matched in (
@@ -146,25 +188,13 @@ def _log_violations(session, interview_analysis_id, question_index, result, clip
     ):
         if not matched:
             continue
+        details_text = ", ".join(matched) if isinstance(matched, list) else str(matched)
         session.add(
             models.ProctoringLogs(
                 interview_analysis_id=interview_analysis_id,
                 event_type=event_type,
-                details=json.dumps(
-                    {
-                        "question_index": question_index,
-                        "reasons": matched,
-                        "speech_seconds": result.get("speech_seconds"),
-                        "mouth_active_ratio_during_speech": result.get(
-                            "mouth_active_ratio_during_speech"
-                        ),
-                        "distinct_voice_clusters": result.get(
-                            "distinct_voice_clusters"
-                        ),
-                        "requires_human_review": True,
-                    }
-                ),
-                image_path=clip_key,
+                details=details_text,
+                image_path=image_url if event_type == models.ProctoringEventType.av_mouth_mismatch and image_url else clip_key,
                 tb_severity="Medium severity",
             )
         )
@@ -196,7 +226,7 @@ def _process_message(payload: dict) -> None:
             "metrics": {"error": str(e)},
         }
 
-    _store_result(payload, result, clip_key)
+    _store_result(payload, result, clip_key, fetched["content"], extension)
 
 
 def _safe_process_message(payload: dict) -> None:
