@@ -18,7 +18,7 @@ import base64
 import logging
 import numpy as np
 import cv2
-from json import dumps as json_dumps
+from json import dumps as json_dumps, loads as json_loads
 from pathlib import Path
 from app.utils import timezone_utils
 from sqlalchemy import and_
@@ -1641,6 +1641,310 @@ def get_av_analysis(
         "disclaimer": (
             "Advisory signals for human review only. These do not affect the "
             "candidate's score and are not evidence of cheating on their own."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Retrying failed answer analysis
+# ---------------------------------------------------------------------------
+#
+# Retrying works entirely from what is already in tb_qna_analysis: the question
+# and the transcribed answer go back to the model and the same row is updated
+# in place. No audio is fetched - by the time a row exists its recording has
+# usually been deleted by the analysis worker anyway, and the transcript it
+# produced is the only input the content analysis ever used.
+
+# Written by the worker when it gives up on an answer ("error") or while it is
+# still retrying the audio fetch ("audio_fetch_failed"). Anything that actually
+# reached the model carries an "overall" instead.
+_FAILED_ANALYSIS_STATUSES = {"error", "audio_fetch_failed"}
+
+# AIInterviewer.analyze_answer never returns None - when the model call fails it
+# returns this sentinel, which the worker then stores as though it were a real
+# result. On disk it is indistinguishable from a genuine zero except by its
+# feedback string, so unless it is recognised here a silently failed analysis
+# keeps dragging the candidate's average down forever.
+_ANALYSIS_FAILURE_FEEDBACK = "Error analyzing response."
+
+# An answer still holding a MinIO pointer was never transcribed, and one that
+# failed during audio processing had its pointer overwritten with this marker.
+# Neither has text to send the model, so neither can be retried here.
+_AUDIO_PENDING_PREFIX = "AUDIO_PENDING:"
+_AUDIO_ERROR_MARKER = "Error in audio processing"
+
+# Fields the fresh analysis owns, plus the bookkeeping a failed attempt leaves
+# behind. Everything outside this set is carried forward from the old row - the
+# audio confidence metrics above all, since the recording they were measured
+# from is deleted once transcribed and cannot be measured again.
+_ANALYSIS_OWNED_KEYS = {
+    "status",
+    "overall",
+    "domain_knowledge",
+    "problem_solving",
+    "job_relevance",
+    "communication_clarity",
+    "relevant_answer",
+    "feedback",
+    "fetch_attempts",
+    "audio_path",
+    "reason",
+    "not_found",
+    "message",
+}
+
+_SCORE_KEYS = (
+    "domain_knowledge",
+    "problem_solving",
+    "job_relevance",
+    "communication_clarity",
+)
+
+
+def _classify_qna_analysis(row: models.QNA_Analysis) -> str:
+    """Judge one answer's stored analysis.
+
+    Returns "ok", "in_progress", "never_analysed", "worker_error" or
+    "llm_failed". Only the last three are worth retrying.
+    """
+    analysis = row.ai_analysis
+    if isinstance(analysis, str):
+        try:
+            analysis = json_loads(analysis)
+        except Exception:
+            return "worker_error"
+
+    if not analysis or not isinstance(analysis, dict):
+        return "never_analysed"
+
+    status_value = analysis.get("status")
+    if status_value in _FAILED_ANALYSIS_STATUSES:
+        return "worker_error"
+    if status_value == "processing":
+        # The worker is holding this row right now; leave it alone.
+        return "in_progress"
+
+    if analysis.get("feedback") == _ANALYSIS_FAILURE_FEEDBACK:
+        return "llm_failed"
+
+    if "overall" not in analysis:
+        return "never_analysed"
+
+    return "ok"
+
+
+def _has_transcript(answer_text: Optional[str]) -> bool:
+    """Is there text here the model can actually be asked about?"""
+    text = (answer_text or "").strip()
+    if not text:
+        return False
+    return not text.startswith(_AUDIO_PENDING_PREFIX) and text != _AUDIO_ERROR_MARKER
+
+
+def _reanalyze_answers(response_ids: list, interview_analysis_id: int) -> None:
+    """Re-run the model over each answer's stored question and transcript.
+
+    One row at a time, each in its own session and committed on its own, so a
+    model failure on one answer cannot cost the answers already re-scored.
+    """
+    from app.db.session import engine
+    from app.services.ai_interviewer.analysis_worker import AnalysisWorker
+
+    succeeded = 0
+
+    for response_id in response_ids:
+        try:
+            with Session(engine) as db_session:
+                row = db_session.get(models.QNA_Analysis, response_id)
+                if not row:
+                    continue
+                question_text = row.question_text
+                answer_text = row.answer_text
+                previous = row.ai_analysis if isinstance(row.ai_analysis, dict) else {}
+                context = db_operations.get_interview_context(
+                    db_session, row.interview_analysis_id
+                )
+
+            if not context:
+                logger.error(
+                    f"[retry-analysis] No interview context for QNA {response_id}; "
+                    "leaving its previous result untouched."
+                )
+                continue
+
+            interviewer = AIInterviewer(
+                job_role=context["job_title"],
+                job_description=context["job_description"],
+                experience=context["experience_level"],
+                skills=context["skills"],
+                topics=context["tb_interview_focus_areas"],
+                resume_text=context["resume_text"],
+            )
+            result = interviewer.analyze_answer(question_text, answer_text)
+
+            if not result or result.get("feedback") == _ANALYSIS_FAILURE_FEEDBACK:
+                # Still failing. Keep what was there rather than swapping one
+                # failure for another - the endpoint can simply be called again.
+                logger.error(
+                    f"[retry-analysis] QNA {response_id} failed again; previous "
+                    "result left in place."
+                )
+                continue
+
+            for key, value in previous.items():
+                if key not in _ANALYSIS_OWNED_KEYS and key not in result:
+                    result[key] = value
+
+            metrics = [result[key] for key in _SCORE_KEYS if key in result]
+            if metrics:
+                result["overall"] = round((sum(metrics) / len(metrics)) * 10, 1)
+
+            with Session(engine) as db_session:
+                row = db_session.get(models.QNA_Analysis, response_id)
+                if row:
+                    row.ai_analysis = result
+                    db_session.add(row)
+                    db_session.commit()
+                    succeeded += 1
+                    logger.info(
+                        f"[retry-analysis] QNA {response_id} re-analysed "
+                        f"(overall={result.get('overall')})"
+                    )
+        except Exception as e:
+            logger.error(f"[retry-analysis] QNA {response_id} errored: {e}")
+
+    if not succeeded:
+        logger.warning(
+            f"[retry-analysis] No answer was re-scored for interview analysis "
+            f"{interview_analysis_id}; its score is unchanged."
+        )
+        return
+
+    # Recompute the interview score through the same path the worker uses, so a
+    # retried answer lands exactly where it would have on the first attempt.
+    try:
+        from app.db.session import engine as db_engine
+
+        worker = AnalysisWorker()  # never started; used for its finalisation logic
+        with Session(db_engine) as db_session:
+            worker.check_interview_completion(db_session, interview_analysis_id)
+        logger.info(
+            f"[retry-analysis] {succeeded} answer(s) re-scored; interview "
+            f"analysis {interview_analysis_id} re-finalized."
+        )
+    except Exception as e:
+        logger.error(f"[retry-analysis] Could not re-finalize interview: {e}")
+
+
+@router.post("/retry-failed-analysis")
+def retry_failed_analysis(
+    background_tasks: BackgroundTasks,
+    application_id: int = Query(
+        ..., description="Job application whose interview should be re-analysed."
+    ),
+    session: Session = Depends(deps.get_session),
+):
+    """Re-analyse the answers of a completed interview that failed to score.
+
+    Each failed answer's question and stored transcript are sent back to the
+    model and the same tb_qna_analysis row is updated in place. Once every
+    retried answer is done the interview's total score and recommendation are
+    recomputed.
+
+    Three kinds of failure are picked up: the worker recorded an error, the
+    model call failed and its "Error analyzing response." sentinel was stored
+    as though it were a real result, or no analysis was ever written. Answers
+    the worker is processing right now, and answers that were never transcribed
+    (still holding a MinIO pointer, or lost during audio processing), are
+    reported and left alone - there is no text to send.
+    """
+    interview_analysis = session.exec(
+        select(models.InterviewAnalysis)
+        .where(
+            models.InterviewAnalysis.application_id == application_id,
+            models.InterviewAnalysis.is_deleted == False,  # noqa: E712
+        )
+        .order_by(models.InterviewAnalysis.id.desc())
+    ).first()
+
+    if not interview_analysis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No interview found for this application.",
+        )
+
+    if interview_analysis.status != models.StatusEnum.completed:
+        return {
+            "application_id": application_id,
+            "interview_session_id": interview_analysis.interview_session_id,
+            "interview_completed": False,
+            "interview_status": interview_analysis.status,
+            "message": "Interview is not completed yet; nothing to re-analyse.",
+            "retried": 0,
+            "answers": [],
+        }
+
+    rows = session.exec(
+        select(models.QNA_Analysis)
+        .where(
+            models.QNA_Analysis.interview_analysis_id == interview_analysis.id,
+            models.QNA_Analysis.is_deleted == False,  # noqa: E712
+        )
+        .order_by(models.QNA_Analysis.question_id, models.QNA_Analysis.id)
+    ).all()
+
+    answers = []
+    retry_ids = []
+
+    for row in rows:
+        state = _classify_qna_analysis(row)
+        entry = {
+            "qna_id": row.id,
+            "question_id": row.question_id,
+            "question": row.question_text,
+            "state": state,
+            "action": "none",
+        }
+
+        if state in ("ok", "in_progress"):
+            answers.append(entry)
+            continue
+
+        if _has_transcript(row.answer_text):
+            retry_ids.append(row.id)
+            entry["action"] = "reanalysing"
+        else:
+            entry["action"] = "skipped"
+            entry["reason"] = (
+                "This answer was never transcribed, so there is no text to "
+                "send the model."
+            )
+
+        answers.append(entry)
+
+    if retry_ids:
+        background_tasks.add_task(
+            _reanalyze_answers, retry_ids, interview_analysis.id
+        )
+
+    logger.info(
+        f"[retry-analysis] application {application_id}: re-analysing "
+        f"{len(retry_ids)} of {len(rows)} answers"
+    )
+
+    return {
+        "application_id": application_id,
+        "interview_session_id": interview_analysis.interview_session_id,
+        "interview_completed": True,
+        "total_answers": len(rows),
+        "retried": len(retry_ids),
+        "skipped": sum(1 for a in answers if a["action"] == "skipped"),
+        "current_total_score": interview_analysis.total_score,
+        "current_recommendation": interview_analysis.recommendation,
+        "answers": answers,
+        "message": (
+            "Re-analysis started. The interview score and recommendation are "
+            "recomputed automatically once every retried answer finishes."
         ),
     }
 
