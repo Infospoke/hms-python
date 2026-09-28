@@ -160,6 +160,19 @@ def is_candidate_pic_log(p):
     )
 
 
+# ReportLab cannot split a table row across pages, so a Q&A cell taller than a
+# page raised LayoutError and failed the whole report. At 1500 characters the
+# tallest row stays well inside one page.
+MAX_QNA_CELL_CHARS = 1500
+
+
+def truncate_for_pdf(text, limit=MAX_QNA_CELL_CHARS):
+    text = str(text or "")
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0] + "… (truncated)"
+
+
 def generate_comprehensive_report(data: dict) -> io.BytesIO:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -866,9 +879,9 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
 
             row = [
                 Paragraph(str(qna_count), td_center),
-                Paragraph(q.question_text, td_style),
-                Paragraph(q.answer_text, td_style),
-                Paragraph(styled_eval, td_style),
+                Paragraph(truncate_for_pdf(q.question_text), td_style),
+                Paragraph(truncate_for_pdf(q.answer_text), td_style),
+                Paragraph(truncate_for_pdf(styled_eval), td_style),
             ]
             qna_table_data.append(row)
             qna_count += 1
