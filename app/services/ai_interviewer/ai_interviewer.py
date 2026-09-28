@@ -2,6 +2,7 @@ import json
 import logging
 import uuid
 import random
+from google.genai import types
 from app.core import config as consts
 from app.services.resume_parser.gemini_client import GeminiClient
 from .prompts import INTERVIEW_GENERATION_PROMPT, INTERVIEW_ANALYSIS_PROMPT
@@ -246,21 +247,17 @@ Return a raw JSON object containing the total questions count and the list of qu
                     parsed["total_questions"] = len(parsed["questions"])
                     return parsed
         except Exception as e:
-            logger.error(f"Error in generate_custom_questions with Gemini: {e}")
-            logger.info("Attempting fallback to Groq...")
+            logger.error(f"Error in generate_custom_questions with {self.model_name}: {e}")
             try:
-                from groq import Groq
-                if consts.GROQ_API_KEY:
-                    groq_client = Groq(api_key=consts.GROQ_API_KEY)
-                    groq_model = consts.GROQ_MODEL or "llama-3.3-70b-versatile"
-                    
-                    chat_completion = groq_client.chat.completions.create(
-                        messages=[{"role": "user", "content": prompt}],
-                        model=groq_model,
-                        temperature=0.7,
-                        response_format={"type": "json_object"}
+                fallback_model = consts.GEMINI_MODEL_FOR_JOB_DESCRIPTION
+                if fallback_model:
+                    logger.info(f"Attempting fallback to {fallback_model}...")
+                    response = self.client.models.generate_content(
+                        model=fallback_model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(response_mime_type="application/json"),
                     )
-                    raw_resp = chat_completion.choices[0].message.content.strip()
+                    raw_resp = (response.text or "").strip()
                     parsed = self.parse_json(raw_resp)
                     if isinstance(parsed, list):
                         parsed = {
@@ -297,12 +294,12 @@ Return a raw JSON object containing the total questions count and the list of qu
                             })
                         parsed["questions"] = cleaned_questions[:count]
                         parsed["total_questions"] = len(parsed["questions"])
-                        logger.info("Successfully generated custom questions using Groq fallback.")
+                        logger.info(f"Successfully generated custom questions using {fallback_model} fallback.")
                         return parsed
-            except Exception as groq_err:
-                logger.error(f"Groq fallback failed: {groq_err}")
+            except Exception as fallback_err:
+                logger.error(f"Gemini fallback failed: {fallback_err}")
 
-        logger.error("Both Gemini and Groq custom question generation failed. Returning empty list.")
+        logger.error("Gemini custom question generation failed. Returning empty list.")
         return {
             "total_questions": 0,
             "questions": []

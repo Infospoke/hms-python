@@ -19,7 +19,7 @@ from app.schemas import (
 from app.utils.recomended_roles import SkillGenerator, JobDescriptionGenerator
 from app.utils.ctc_validation_helper import fetch_salary_benchmarks
 
-from app.utils.groq_api import call_llm
+from app.utils.gemini_api import call_llm
 from app.utils.requirements_helper import (
     build_certifications_prompt,
     build_languages_prompt,
@@ -262,7 +262,7 @@ async def ctc_review(req: CTCReviewRequest):
         max_sal = first.max_salary or 500000.0
         return CTCReviewResponse(min_salary=float(min_sal), max_salary=float(max_sal))
 
-    # Fallback to ultra-fast Groq model estimation for localized CTC range
+    # Fall back to a Gemini estimate of the localized CTC range
     prompt = f"""You are a recruitment compensation analyst specializing in the Indian tech market.
 Estimate a highly realistic annual salary range (CTC in INR) for the following job profile:
 - Job Title: {req.job_title}
@@ -279,7 +279,7 @@ Respond with a JSON object in this exact format:
 }}
 """
     try:
-        llm_resp = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+        llm_resp = await call_llm(prompt, model_name=consts.GEMINI_MODEL_FOR_JOB_DESCRIPTION)
         min_sal = float(llm_resp.get("min_salary", 300000))
         max_sal = float(llm_resp.get("max_salary", 500000))
         return CTCReviewResponse(min_salary=min_sal, max_salary=max_sal)
@@ -293,7 +293,7 @@ async def get_certifications_suggestions(req: JobRequirementsRequest):
     prompt = build_certifications_prompt(req)
 
     try:
-        llm_resp = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+        llm_resp = await call_llm(prompt, model_name=consts.GEMINI_MODEL_FOR_JOB_DESCRIPTION)
         return CertificationsResponse(certifications=llm_resp.get("certifications", []))
     except Exception as e:
         logger.error(f"Certifications suggestions failed: {str(e)}")
@@ -308,7 +308,7 @@ async def get_language_suggestions(req: JobRequirementsRequest):
     prompt = build_languages_prompt(req)
 
     try:
-        llm_resp = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+        llm_resp = await call_llm(prompt, model_name=consts.GEMINI_MODEL_FOR_JOB_DESCRIPTION)
         return LanguagesResponse(languages=llm_resp.get("languages", []))
     except Exception as e:
         logger.error(f"Language suggestions failed: {str(e)}")
@@ -323,7 +323,7 @@ async def get_qualifications_suggestions(req: JobRequirementsRequest):
     prompt = build_qualifications_prompt(req)
 
     try:
-        llm_resp = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+        llm_resp = await call_llm(prompt, model_name=consts.GEMINI_MODEL_FOR_JOB_DESCRIPTION)
         qualifications = llm_resp.get("qualifications", [])
 
         if not any(q.get("degree", "").lower() == "any graduate" for q in qualifications if isinstance(q, dict)):

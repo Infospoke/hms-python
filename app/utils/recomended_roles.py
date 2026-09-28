@@ -1,6 +1,6 @@
 import json
 import logging
-from app.utils.groq_api import call_llm
+from app.utils.gemini_api import call_llm
 from app.core import config as consts
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ class SkillGenerator:
         )
 
         try:
-            result = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+            result = await call_llm(prompt, model_name=consts.GEMINI_MODEL_FOR_JOB_DESCRIPTION)
             skills = []
             if isinstance(result, list):
                 skills = result
@@ -145,7 +145,7 @@ class SkillGenerator:
         )
 
         try:
-            result = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+            result = await call_llm(prompt, model_name=consts.GEMINI_MODEL_FOR_JOB_DESCRIPTION)
             skills = []
             if isinstance(result, list):
                 skills = result
@@ -219,6 +219,12 @@ class JobDescriptionGenerator:
         required_certifications: list = None,
         languages: str = "",
     ):
+        # The endpoint sends certifications as one comma-separated string;
+        # joining a string directly would split it into single characters.
+        if isinstance(required_certifications, str):
+            required_certifications = [
+                c.strip() for c in required_certifications.split(",") if c.strip()
+            ]
         prompt = JOB_DESCRIPTION_PROMPT.format(
             job_title=job_title or "Not specified",
             department=department or "Not specified",
@@ -238,7 +244,7 @@ class JobDescriptionGenerator:
         )
 
         try:
-            result = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+            result = await call_llm(prompt, model_name=consts.GEMINI_MODEL_FOR_JOB_DESCRIPTION)
             logger.info(f"JD generation response success, length: {len(str(result))}")
             logger.info(f"Parsed JD result: {result}")
             return {"success": True, "job_description": result}
@@ -271,7 +277,7 @@ class JobDescriptionGenerator:
         )
 
         try:
-            result = await call_llm(prompt, model_name=consts.GROQ_MODEL_FOR_JOB_DESCRIPTION)
+            result = await call_llm(prompt, model_name=consts.GEMINI_MODEL_FOR_JOB_DESCRIPTION)
             logger.info(f"JD rewrite response success, length: {len(str(result))}")
             return {"success": True, "job_description": result}
         except Exception as e:

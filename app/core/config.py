@@ -102,7 +102,7 @@ def _apply_interview_configs():
     global _INTERVIEW_CONFIGS_CACHE
     global ENVIRONMENT
     global GOOGLE_API_KEY, GROQ_API_KEY, WHISPER_MODEL_NAME
-    global GEMINI_MODEL, GEMINI_MODEL_FOR_AI_INTERVIEWER, GROQ_MODEL, GROQ_MODEL_FOR_JOB_DESCRIPTION
+    global GEMINI_MODEL, GEMINI_MODEL_FOR_AI_INTERVIEWER, GEMINI_MODEL_FOR_JOB_DESCRIPTION
     global AWS_REGION, AWS_ACCESS_KEY, AWS_SECRET_KEY
     global INFOSPOKE_S3_BUCKET_NAME, SQS_ANALYZE_IMAGE_QUEUE_URL, HOST
     global MAX_QUESTION_TIME
@@ -136,11 +136,8 @@ def _apply_interview_configs():
     GEMINI_MODEL_FOR_AI_INTERVIEWER = cache.get(
         "GEMINI_MODEL_FOR_AI_INTERVIEWER", GEMINI_MODEL_FOR_AI_INTERVIEWER
     )
-    GROQ_MODEL = cache.get(
-        "GROQ_MODEL", GROQ_MODEL
-    )
-    GROQ_MODEL_FOR_JOB_DESCRIPTION = cache.get(
-        "GROQ_MODEL_FOR_JOB_DESCRIPTION", GROQ_MODEL_FOR_JOB_DESCRIPTION
+    GEMINI_MODEL_FOR_JOB_DESCRIPTION = cache.get(
+        "GEMINI_MODEL_FOR_JOB_DESCRIPTION", GEMINI_MODEL_FOR_JOB_DESCRIPTION
     )
     AWS_REGION = cache.get("AWS_REGION", AWS_REGION)
     AWS_ACCESS_KEY = cache.get("AWS_ACCESS_KEY", AWS_ACCESS_KEY)
@@ -304,12 +301,14 @@ DATABASE_URL = ENVIRONMENTS_DATA.get(ENVIRONMENT, {}).get("DATABASE_URL")
 
 
 GOOGLE_API_KEY: str = None
+# Speech-to-text is the one non-Gemini model: Whisper hosted on Groq.
 GROQ_API_KEY: str = None
 WHISPER_MODEL_NAME: str = None
-GEMINI_MODEL: str = COMMON_CONFIG.get("gemini_model", "gemma-3-27b-it")
-GEMINI_MODEL_FOR_AI_INTERVIEWER: str = COMMON_CONFIG.get("gemini_model_for_ai_interviewer", "gemma-3-27b-it")
-GROQ_MODEL: str = COMMON_CONFIG.get("groq_model", COMMON_CONFIG.get("groq_model_for_ai_interviewer", "llama-3.3-70b-versatile"))
-GROQ_MODEL_FOR_JOB_DESCRIPTION: str = COMMON_CONFIG.get("groq_model_for_job_description", "llama-3.3-70b-versatile")
+GEMINI_MODEL: str = COMMON_CONFIG.get("gemini_model", "gemini-3.5-flash")
+GEMINI_MODEL_FOR_AI_INTERVIEWER: str = COMMON_CONFIG.get("gemini_model_for_ai_interviewer", "gemini-3.5-flash")
+# Admin JSON helpers (skills, JD, CTC, requirement suggestions) are interactive, and
+# Flash-Lite answers them in a few seconds where Flash takes 20s+.
+GEMINI_MODEL_FOR_JOB_DESCRIPTION: str = COMMON_CONFIG.get("gemini_model_for_job_description", "gemini-3.5-flash-lite")
 AWS_REGION: str = None
 AWS_ACCESS_KEY: str = None
 AWS_SECRET_KEY: str = None
