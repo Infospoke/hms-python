@@ -5,6 +5,7 @@ import datetime
 from datetime import datetime as dt_now
 from collections import Counter
 from app.utils import timezone_utils
+from app.services.reports.pdf_utils import safe_text
 import matplotlib
 
 matplotlib.use("Agg")
@@ -668,7 +669,7 @@ def generate_applicants_pdf(
     # 2. Right column: Report generated date and title
     title_part = [
         Paragraph("JOB APPLICANTS REPORT", title_style),
-        Paragraph(f"Detailed Report for {job_title}", subtitle_style),
+        Paragraph(f"Detailed Report for {safe_text(job_title)}", subtitle_style),
     ]
 
     header_table = Table([[comp_title, title_part]], colWidths=[3.2 * inch, 4.3 * inch])
@@ -726,7 +727,7 @@ def generate_applicants_pdf(
             icon = Paragraph("•", styles["Normal"])
 
         t = Table(
-            [[icon, [Paragraph(label, label_style), Paragraph(val, val_style)]]],
+            [[icon, [Paragraph(label, label_style), Paragraph(safe_text(val), val_style)]]],
             colWidths=[18, 62],
         )
         t.setStyle(
@@ -1113,10 +1114,10 @@ def generate_applicants_pdf(
             [
                 Paragraph(str(app.get("candidate_id", "N/A")), cs),
                 Paragraph(
-                    str(app.get("name", "")),
+                    safe_text(str(app.get("name", ""))),
                     ParagraphStyle("N", parent=cs, alignment=TA_LEFT),
                 ),
-                Paragraph(str(app.get("experience", "")), cs),
+                Paragraph(safe_text(str(app.get("experience", ""))), cs),
                 Paragraph(str(app.get("applied_on", "")), cs),
                 Paragraph(str(app.get("screening_score", "-")), cs),
                 chk_1,

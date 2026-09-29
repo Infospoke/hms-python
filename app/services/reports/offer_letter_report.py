@@ -10,6 +10,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from app.services.reports.pdf_utils import safe_text
 
 if os.path.exists("static/fonts/Roboto-Regular.ttf"):
     pdfmetrics.registerFont(TTFont("Roboto", "static/fonts/Roboto-Regular.ttf"))
@@ -114,17 +115,17 @@ def generate_offer_letter_pdf(data: dict) -> io.BytesIO:
 
     # REF NO
     ref_no = data.get("reference_id", "REF NO: NEXUS")
-    elements.append(Paragraph(f"<font color='#1E90FF'><i>REF NO: {ref_no}</i></font>", style_normal))
+    elements.append(Paragraph(f"<font color='#1E90FF'><i>REF NO: {safe_text(ref_no)}</i></font>", style_normal))
     elements.append(Spacer(1, 0.2 * inch))
 
     # Date
-    elements.append(Paragraph(f"<b>Date:</b> {data.get('date', '')}", style_right))
+    elements.append(Paragraph(f"<b>Date:</b> {safe_text(data.get('date', ''))}", style_right))
     elements.append(Spacer(1, 0.2 * inch))
 
     # To Candidate
     candidate_name = data.get("candidate_name", "Candidate")
     location = "Hyderabad" # Defaulting for now
-    elements.append(Paragraph(f"<b>Mr/Ms. {candidate_name}</b>,", style_bold))
+    elements.append(Paragraph(f"<b>Mr/Ms. {safe_text(candidate_name)}</b>,", style_bold))
     elements.append(Spacer(1, 0.1 * inch))
     elements.append(Paragraph(f"<b>{location}</b>", style_bold))
     elements.append(Spacer(1, 0.3 * inch))
@@ -134,7 +135,7 @@ def generate_offer_letter_pdf(data: dict) -> io.BytesIO:
     elements.append(Spacer(1, 0.3 * inch))
 
     # Dear Candidate
-    elements.append(Paragraph(f"Dear <b>{candidate_name}</b>,", style_normal))
+    elements.append(Paragraph(f"Dear <b>{safe_text(candidate_name)}</b>,", style_normal))
     elements.append(Spacer(1, 0.2 * inch))
 
     # Body paragraphs
@@ -146,11 +147,11 @@ def generate_offer_letter_pdf(data: dict) -> io.BytesIO:
     ctc = float(data.get("ctc", 0))
     ctc_words = number_to_words(ctc)
 
-    p1 = f"We are delighted to extend the offer for the position of <b>{job_title}</b> within our Offshore Development Center, located in {location} as part of our <b>{department}</b>."
+    p1 = f"We are delighted to extend the offer for the position of <b>{safe_text(job_title)}</b> within our Offshore Development Center, located in {location} as part of our <b>{department}</b>."
     elements.append(Paragraph(p1, style_normal))
     elements.append(Spacer(1, 0.2 * inch))
 
-    p2 = f"Your joining date will be <b>{joining_date}</b>. Your immediate supervisor will be <b>{manager_name}</b>."
+    p2 = f"Your joining date will be <b>{safe_text(joining_date)}</b>. Your immediate supervisor will be <b>{safe_text(manager_name)}</b>."
     elements.append(Paragraph(p2, style_normal))
     elements.append(Spacer(1, 0.2 * inch))
 
@@ -166,7 +167,7 @@ def generate_offer_letter_pdf(data: dict) -> io.BytesIO:
     elements.append(Paragraph(f"&bull; {bullet_text}", style_bullet))
     elements.append(Spacer(1, 0.2 * inch))
 
-    p5 = f"This offer of employment is contingent upon you accepting the terms and conditions as set forth in your appointment letter, which will be mailed to you separately. You are required to join the services of the Company within but not later than <b>{joining_date}</b>. Please send a signed copy of this letter indicating your acceptance to join and resignation acceptance letter from your current employer."
+    p5 = f"This offer of employment is contingent upon you accepting the terms and conditions as set forth in your appointment letter, which will be mailed to you separately. You are required to join the services of the Company within but not later than <b>{safe_text(joining_date)}</b>. Please send a signed copy of this letter indicating your acceptance to join and resignation acceptance letter from your current employer."
     elements.append(Paragraph(p5, style_normal))
     elements.append(Spacer(1, 0.2 * inch))
 
