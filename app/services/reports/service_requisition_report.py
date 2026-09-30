@@ -3,6 +3,7 @@ import math
 import datetime
 import os
 from app.utils import timezone_utils
+from app.services.reports.pdf_utils import safe_text, allow_oversized_rows
 
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import (
@@ -116,6 +117,19 @@ class RoundedCard(Flowable):
         self.border_color = border_color
         self.radius = radius
         self.width, self.height = table_obj.wrap(0, 0)
+        self.splittable = False
+
+    def split(self, availWidth, availHeight):
+        # Only a card taller than a page is split (see allow_oversized_card);
+        # any other card still moves to the next page whole.
+        if not self.splittable:
+            return []
+        parts = []
+        for part in self.table_obj.split(availWidth, availHeight):
+            card = RoundedCard(part, self.bg_color, self.border_color, self.radius)
+            card.splittable = True
+            parts.append(card)
+        return parts
 
     def draw(self):
         self.canv.saveState()
@@ -127,6 +141,15 @@ class RoundedCard(Flowable):
         )
         self.table_obj.drawOn(self.canv, 0, 0)
         self.canv.restoreState()
+
+
+def allow_oversized_card(card, doc):
+    # A RoundedCard is drawn as one block, so a card taller than a page (a long
+    # business case, say) raised LayoutError and failed the whole report. Such
+    # a card is split like its table instead.
+    if card.height > doc.height - 12:  # the page frame pads 6pt top and bottom
+        card.splittable = True
+        allow_oversized_rows(card.table_obj, doc)
 
 
 class ColoredDot(Flowable):
@@ -505,9 +528,13 @@ def generate_service_requisition_report(data: dict) -> io.BytesIO:
                 color = "#f59e0b"
             elif value == "Critical":
                 color = "#ef4444"
+            else:
+                # Any other priority, including the "N/A" sent when none is
+                # set, used to leave color unset and fail the whole report.
+                color = "#94a3b8"
 
             dot_flow = ColoredDot(color, size=6)
-            text_para = Paragraph(f"<b>{value}</b>", val_style)
+            text_para = Paragraph(f"<b>{safe_text(value)}</b>", val_style)
             val_content = Table([[dot_flow, text_para]], colWidths=[12, 1.1 * inch])
             val_content.setStyle(
                 TableStyle(
@@ -521,7 +548,7 @@ def generate_service_requisition_report(data: dict) -> io.BytesIO:
                 )
             )
         else:
-            val_content = Paragraph(f"<b>{value}</b>", val_style)
+            val_content = Paragraph(f"<b>{safe_text(value)}</b>", val_style)
 
         content_table = Table(
             [
@@ -624,7 +651,7 @@ def generate_service_requisition_report(data: dict) -> io.BytesIO:
         return [
             Paragraph(label, lbl_style),
             Spacer(1, 4),
-            Paragraph(value, val_style),
+            Paragraph(safe_text(value), val_style),
         ]
 
     section_2 = data.get("section_2")
@@ -689,6 +716,7 @@ def generate_service_requisition_report(data: dict) -> io.BytesIO:
     rounded_req_card = RoundedCard(
         req_card_table, colors.white, colors.HexColor("#cbd5e1"), radius=4
     )
+    allow_oversized_card(rounded_req_card, doc)
     story.append(rounded_req_card)
     story.append(Spacer(1, 15))
 
@@ -742,6 +770,7 @@ def generate_service_requisition_report(data: dict) -> io.BytesIO:
     rounded_biz_card = RoundedCard(
         biz_card_table, colors.white, colors.HexColor("#cbd5e1"), radius=4
     )
+    allow_oversized_card(rounded_biz_card, doc)
     story.append(rounded_biz_card)
     story.append(Spacer(1, 15))
 
@@ -890,6 +919,7 @@ def generate_service_requisition_report(data: dict) -> io.BytesIO:
     rounded_role_card = RoundedCard(
         role_card_table, colors.white, colors.HexColor("#cbd5e1"), radius=4
     )
+    allow_oversized_card(rounded_role_card, doc)
     story.append(rounded_role_card)
     story.append(Spacer(1, 15))
 

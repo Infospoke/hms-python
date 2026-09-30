@@ -8,6 +8,7 @@ import datetime
 from app.models import ProctoringEventType
 from app.utils import timezone_utils
 from app.services import minio_helper
+from app.services.reports.pdf_utils import safe_text, allow_oversized_rows
 
 import matplotlib
 
@@ -90,7 +91,7 @@ def list_to_bullets(items, style):
     if not items:
         return Paragraph("N/A", style)
     bullets = "<br/>".join(
-        [f"&bull; {str(i).strip()}" for i in items if str(i).strip()]
+        [f"&bull; {safe_text(str(i).strip())}" for i in items if str(i).strip()]
     )
     return Paragraph(bullets, style)
 
@@ -405,13 +406,13 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         return t
 
     col1_items = [
-        make_icon_block("static/icons/user.png", c_name),
+        make_icon_block("static/icons/user.png", safe_text(c_name)),
         Spacer(1, 8),
-        make_icon_block("static/icons/email.png", c_email),
+        make_icon_block("static/icons/email.png", safe_text(c_email)),
         Spacer(1, 3),
-        make_icon_block("static/icons/phone.png", c_phone),
+        make_icon_block("static/icons/phone.png", safe_text(c_phone)),
         Spacer(1, 3),
-        make_icon_block("static/icons/location.png", c_city_country),
+        make_icon_block("static/icons/location.png", safe_text(c_city_country)),
         Spacer(1, 12),
         Paragraph(f"<font>Candidate ID: {c_app_id}</font>", td_style),
     ]
@@ -424,12 +425,12 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         Spacer(1, 10),
         make_icon_block(
             "static/icons/briefcase.png",
-            f"<font color='#122554'><b>Applied For</b></font><br/><font color='#4B5563'>{c_job}</font>",
+            f"<font color='#122554'><b>Applied For</b></font><br/><font color='#4B5563'>{safe_text(c_job)}</font>",
         ),
         Spacer(1, 10),
         make_icon_block(
             "static/icons/tag.png",
-            f"<font color='#122554'><b>Job Code</b></font><br/><font color='#4B5563'>{c_req_id}</font>",
+            f"<font color='#122554'><b>Job Code</b></font><br/><font color='#4B5563'>{safe_text(c_req_id)}</font>",
         ),
     ]
 
@@ -441,7 +442,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         Spacer(1, 10),
         make_icon_block(
             "static/icons/location.png",
-            f"<font color='#122554'><b>Location</b></font><br/><font color='#4B5563'>{c_loc}</font>",
+            f"<font color='#122554'><b>Location</b></font><br/><font color='#4B5563'>{safe_text(c_loc)}</font>",
         ),
         Spacer(1, 10),
         make_icon_block(
@@ -737,6 +738,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         )
     )
     if r_anal:
+        allow_oversized_rows(box3, doc)
         story.append(box3)
         story.append(Spacer(1, 10))
 
@@ -866,9 +868,9 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
 
             row = [
                 Paragraph(str(qna_count), td_center),
-                Paragraph(q.question_text, td_style),
-                Paragraph(q.answer_text, td_style),
-                Paragraph(styled_eval, td_style),
+                Paragraph(safe_text(q.question_text), td_style),
+                Paragraph(safe_text(q.answer_text), td_style),
+                Paragraph(safe_text(styled_eval), td_style),
             ]
             qna_table_data.append(row)
             qna_count += 1
@@ -896,6 +898,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         if not qna_list:
             t_qna.setStyle(TableStyle([("SPAN", (0, 1), (3, 1))]))
 
+        allow_oversized_rows(t_qna, doc)
         story.append(t_qna)
         story.append(Spacer(1, 10))
 
@@ -953,7 +956,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
             ]
         ]
 
-        sorted_procs = sorted(violations_procs, key=get_sev_weight, reverse=True)[:10]
+        sorted_procs = sorted(violations_procs, key=get_sev_weight, reverse=True)[:5]
 
         v_count = 1
         for p in sorted_procs:
@@ -1048,6 +1051,7 @@ def generate_comprehensive_report(data: dict) -> io.BytesIO:
         )
         if not sorted_procs:
             t_v.setStyle(TableStyle([("SPAN", (0, 1), (5, 1))]))
+        allow_oversized_rows(t_v, doc)
         story.append(t_v)
         story.append(Spacer(1, 4))
 
